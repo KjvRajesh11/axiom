@@ -154,3 +154,4 @@ When you have access to an authorized remote Linux x86-64 / AMD Zen machine:
    ```
 
 The remote runner automatically probes CPUID, verifies the `AuthenticAMD` vendor string, checks AVX-512 flags, transfers a SHA-256 hashed experiment specification, executes the workload, and returns verified measurements.
+# axiom
