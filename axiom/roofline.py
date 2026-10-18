@@ -44,8 +44,11 @@ class RooflinePoint:
     measured_gflops: float  # GFLOP/s
     median_time_ms: float
     stddev_time_ms: float
-    regime: str  # "memory_bound", "compute_bound", or "transition"
+    regime: str  # "memory_bound", "compute_bound", "transition", or "invalid_input"
     efficiency_vs_empirical_ceiling_pct: float
+    working_set_bytes: int = 0
+    cache_tier: str = "unknown"  # "L1_resident", "L2_L3_resident", "DRAM_resident"
+    bandwidth_tier: str = "unknown"  # "L1_cache_bandwidth", "L2_cache_bandwidth", "DRAM_bandwidth"
     notes: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -117,11 +120,37 @@ class ArithmeticIntensityCalculator:
         return total_flops, total_bytes, ai
 
     @staticmethod
-    def calculate_memory_sweep(size_bytes: int, stride_bytes: int = 4) -> Tuple[float, float, float]:
-        # Each float load executes 1 accumulation op (1 FLOP)
-        num_ops = float(size_bytes // 4)
-        ai = num_ops / float(size_bytes) if size_bytes > 0 else 0.25
-        return num_ops, float(size_bytes), ai
+    def calculate_working_set_bytes(workload_id: str, size: int) -> int:
+        if size <= 0:
+            return 0
+        if workload_id == "matmul":
+            return int(3 * (size ** 2) * 4)  # 3 matrices of float (A, B, C)
+        elif workload_id == "conv2d":
+            out_dim = max(0, size - 5 + 1)
+            return int((size * size + 25 + out_dim * out_dim) * 4)
+        else:
+            return int(size * 1024)
+
+    @staticmethod
+    def classify_working_set(working_set_bytes: int, architecture: str = "arm64") -> Tuple[str, str]:
+        if working_set_bytes <= 0:
+            return "invalid", "invalid"
+        if "arm" in architecture.lower():
+            # Apple M4: L1 D-Cache = 128KB, L2 shared = 16MB
+            if working_set_bytes <= 128 * 1024:
+                return "L1_resident", "L1_cache_bandwidth"
+            elif working_set_bytes <= 16 * 1024 * 1024:
+                return "L2_L3_resident", "L2_cache_bandwidth"
+            else:
+                return "DRAM_resident", "DRAM_bandwidth"
+        else:
+            # x86-64 / AMD Zen: L1 = 32KB, L2 = 1MB, L3 = 32MB
+            if working_set_bytes <= 32 * 1024:
+                return "L1_resident", "L1_cache_bandwidth"
+            elif working_set_bytes <= 32 * 1024 * 1024:
+                return "L2_L3_resident", "L3_cache_bandwidth"
+            else:
+                return "DRAM_resident", "DRAM_bandwidth"
 
 
 class RooflineAnalyzer:
@@ -207,6 +236,26 @@ class RooflineAnalyzer:
                 ),
             ]
 
+    def calibrate_empirical_ceilings(self, benchmark_engine=None) -> Dict[str, float]:
+        """Calibrates empirical ceilings from live microkernel benchmarks on the current host."""
+        calibrated = {}
+        if benchmark_engine is None:
+            return calibrated
+
+        try:
+            # Measure peak single-thread compute via SIMD kernel
+            target_cand = "neon" if "arm" in self.architecture.lower() else "interchanged"
+            res = benchmark_engine.sandbox.run_candidate("matmul", target_cand, 128, warmup_runs=1, measurement_runs=3)
+            if res.correctness_passed and res.gflops > 0:
+                for c in self.ceilings:
+                    if c.is_empirical and c.ceiling_type == "compute" and "single-core" in c.name.lower():
+                        c.value = round(res.gflops, 1)
+                        c.source_and_assumptions = f"Live calibrated on host via {target_cand} N=128 microkernel."
+                        calibrated[c.name] = c.value
+        except Exception:
+            pass
+        return calibrated
+
     def analyze_candidate(
         self,
         workload_id: str,
@@ -216,12 +265,32 @@ class RooflineAnalyzer:
         stddev_ms: float,
         measured_gflops: float,
     ) -> RooflinePoint:
+        if size <= 0:
+            return RooflinePoint(
+                workload_id=workload_id,
+                candidate_id=candidate_id,
+                problem_size=size,
+                arithmetic_intensity=0.0,
+                measured_gflops=0.0,
+                median_time_ms=max(0.0, median_ms),
+                stddev_time_ms=max(0.0, stddev_ms),
+                regime="invalid_input",
+                efficiency_vs_empirical_ceiling_pct=0.0,
+                working_set_bytes=0,
+                cache_tier="invalid",
+                bandwidth_tier="invalid",
+                notes="Problem size <= 0 is invalid; operational intensity undefined.",
+            )
+
         if workload_id == "matmul":
             _, _, ai = ArithmeticIntensityCalculator.calculate_matmul(size, candidate_id)
         elif workload_id == "conv2d":
             _, _, ai = ArithmeticIntensityCalculator.calculate_conv2d(size, size, 5, candidate_id)
         else:
             _, _, ai = ArithmeticIntensityCalculator.calculate_memory_sweep(size * 1024)
+
+        ws_bytes = ArithmeticIntensityCalculator.calculate_working_set_bytes(workload_id, size)
+        cache_tier, bw_tier = ArithmeticIntensityCalculator.classify_working_set(ws_bytes, self.architecture)
 
         # Compare against empirical ceilings
         emp_compute = next(
@@ -245,6 +314,10 @@ class RooflineAnalyzer:
 
         efficiency = (measured_gflops / roofline_limit) * 100.0 if roofline_limit > 0 else 0.0
 
+        notes = ""
+        if median_ms <= 0:
+            notes = "Invalid measurement duration <= 0 ms."
+
         return RooflinePoint(
             workload_id=workload_id,
             candidate_id=candidate_id,
@@ -255,6 +328,10 @@ class RooflineAnalyzer:
             stddev_time_ms=stddev_ms,
             regime=regime,
             efficiency_vs_empirical_ceiling_pct=min(efficiency, 100.0),
+            working_set_bytes=ws_bytes,
+            cache_tier=cache_tier,
+            bandwidth_tier=bw_tier,
+            notes=notes,
         )
 
     def generate_report(self, points: List[RooflinePoint]) -> RooflineModelReport:

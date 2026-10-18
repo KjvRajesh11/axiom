@@ -1,0 +1,36 @@
+build/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.o
+*.s
+*.tmp
+.DS_Store
+
+# Build systems
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled binaries and dependencies
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.exe
+
+# Python caches and environments
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+!.env.example

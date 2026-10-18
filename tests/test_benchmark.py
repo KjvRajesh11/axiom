@@ -65,3 +65,27 @@ def test_benchmark_engine_run():
         assert cmp.speedup > 1.0
         assert cmp.correctness_passed is True
         assert cmp.candidate_p95_ms > 0.0
+
+
+def test_student_t_exactness_vs_normal_approximation():
+    from axiom.benchmark import student_t_two_tailed_p_value
+
+    # For t=2.776 at df=4, two-tailed p-value is exactly 0.05
+    p_val = student_t_two_tailed_p_value(2.7764, df=4.0)
+    assert abs(p_val - 0.05) < 0.005
+
+    # At df=4, a t of 2.0 has p around 0.116; standard normal gives ~0.045
+    p_t = student_t_two_tailed_p_value(2.0, df=4.0)
+    assert p_t > 0.10  # Demonstrates no false precision from Gaussian tail
+
+
+def test_tukey_outlier_detection_preserves_samples():
+    # 7 consistent samples and 1 major context-switch spike (100.0 ms)
+    times = [10.0, 10.1, 9.9, 10.0, 10.2, 10.0, 9.8, 100.0]
+    stats = calculate_comprehensive_stats(times)
+
+    assert stats.outlier_count == 1
+    assert "Detected 1 outlier" in stats.outlier_explanation
+    # Verify no samples were deleted
+    assert len(times) == 8
+    assert stats.max_val == 100.0

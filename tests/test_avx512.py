@@ -27,16 +27,18 @@ def test_cpu_feature_probe_arm64():
 def test_avx512_safe_dispatch_correctness():
     """Runs matmul with candidate avx512 through the benchmark runner and verifies numerical accuracy."""
     be = BenchmarkEngine()
-    result = be.sandbox.run_candidate(
-        workload="matmul",
-        candidate="avx512",
-        size=64,
-        warmup_runs=1,
-        measurement_runs=3,
-    )
-    assert result.correctness_passed is True
-    assert result.max_rel_error < 1e-4
-    assert result.median_ms > 0.0
+    # Test boundary and non-power-of-two sizes
+    for size in (1, 7, 15, 17, 31, 33, 64):
+        result = be.sandbox.run_candidate(
+            workload="matmul",
+            candidate="avx512",
+            size=size,
+            warmup_runs=1,
+            measurement_runs=2,
+        )
+        assert result.correctness_passed is True, f"Failed correctness for size={size}"
+        assert result.max_rel_error < 1e-4, f"max_rel_error too large ({result.max_rel_error}) for size={size}"
+        assert result.median_ms > 0.0
 
 
 def test_avx512_x86_cross_compilation_and_assembly():

@@ -26,10 +26,78 @@ class StatisticalSummary:
     ci95_low: float
     ci95_high: float
     cv: float  # Coefficient of Variation (stddev / mean)
+    outlier_count: int = 0
+    outlier_bounds: Tuple[float, float] = (0.0, 0.0)
+    outlier_explanation: str = ""
+
+
+def _pure_python_betacf(a: float, b: float, x: float, max_iter: int = 100, eps: float = 1e-12) -> float:
+    """Evaluates continued fraction for incomplete beta function."""
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < 1e-30:
+        d = 1e-30
+    d = 1.0 / d
+    h = d
+    for m in range(1, max_iter + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < 1e-30:
+            d = 1e-30
+        c = 1.0 + aa / c
+        if abs(c) < 1e-30:
+            c = 1e-30
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < 1e-30:
+            d = 1e-30
+        c = 1.0 + aa / c
+        if abs(c) < 1e-30:
+            c = 1e-30
+        d = 1.0 / d
+        del_h = d * c
+        h *= del_h
+        if abs(del_h - 1.0) < eps:
+            break
+    return h
+
+
+def _pure_python_ibeta(a: float, b: float, x: float) -> float:
+    """Computes regularized incomplete beta function I_x(a, b)."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lbeta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
+    front = math.exp(math.log(x) * a + math.log(1.0 - x) * b - lbeta) / a
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _pure_python_betacf(a, b, x)
+    else:
+        return 1.0 - (math.exp(math.log(1.0 - x) * b + math.log(x) * a - lbeta) / b) * _pure_python_betacf(b, a, 1.0 - x)
+
+
+def student_t_two_tailed_p_value(t: float, df: float) -> float:
+    """Computes exact two-tailed Student-t p-value with df degrees of freedom."""
+    if df <= 0.0:
+        return 1.0
+    try:
+        import scipy.stats  # type: ignore
+        return float(scipy.stats.t.sf(abs(t), df=df) * 2.0)
+    except Exception:
+        # Exact numerical fallback using regularized incomplete beta function
+        x = df / (df + t * t)
+        p = _pure_python_ibeta(0.5 * df, 0.5, x)
+        return max(0.0, min(1.0, float(p)))
 
 
 def calculate_comprehensive_stats(times_ms: List[float]) -> StatisticalSummary:
-    """Calculates comprehensive robust descriptive statistics and confidence intervals."""
+    """Calculates comprehensive robust descriptive statistics, outlier fences, and confidence intervals."""
     if not times_ms:
         return StatisticalSummary(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
@@ -60,6 +128,19 @@ def calculate_comprehensive_stats(times_ms: List[float]) -> StatisticalSummary:
     q3 = sorted_times[(3 * n) // 4]
     iqr_v = q3 - q1
 
+    # Tukey's Outlier Fences: [Q1 - 1.5*IQR, Q3 + 1.5*IQR]
+    lower_fence = q1 - 1.5 * iqr_v
+    upper_fence = q3 + 1.5 * iqr_v
+    outliers = [x for x in times_ms if x < lower_fence or x > upper_fence]
+    outlier_count = len(outliers)
+    if outlier_count > 0:
+        outlier_explanation = (
+            f"Detected {outlier_count} outlier sample(s) outside Tukey fence [{lower_fence:.3f}, {upper_fence:.3f}] ms. "
+            f"Samples preserved without deletion to maintain scientific validity."
+        )
+    else:
+        outlier_explanation = "Zero outliers detected outside Tukey fences."
+
     # Percentiles helper
     def get_percentile(p: float) -> float:
         idx = int(p * (n - 1))
@@ -88,12 +169,15 @@ def calculate_comprehensive_stats(times_ms: List[float]) -> StatisticalSummary:
         p99_val=p99,
         ci95_low=ci_low,
         ci95_high=ci_high,
-        cv=cv
+        cv=cv,
+        outlier_count=outlier_count,
+        outlier_bounds=(lower_fence, upper_fence),
+        outlier_explanation=outlier_explanation
     )
 
 
 def welch_t_test(x: List[float], y: List[float]) -> Tuple[float, float]:
-    """Computes Welch's t-statistic and two-tailed p-value for two independent samples."""
+    """Computes Welch's t-statistic and exact Student-t two-tailed p-value."""
     n1 = len(x)
     n2 = len(y)
     if n1 < 2 or n2 < 2:
@@ -116,10 +200,8 @@ def welch_t_test(x: List[float], y: List[float]) -> Tuple[float, float]:
     df_denom = ((v1 / n1) ** 2 / (n1 - 1)) + ((v2 / n2) ** 2 / (n2 - 1))
     df = df_num / df_denom if df_denom > 0 else 1.0
 
-    # Normal / ERFC complementary error function approximation
-    z = abs(t)
-    p_approx = math.erfc(z / math.sqrt(2.0))
-    return t, max(0.0, min(1.0, p_approx))
+    p_value = student_t_two_tailed_p_value(t, df)
+    return t, p_value
 
 
 @dataclass

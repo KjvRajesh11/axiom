@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
 
         // Warmup runs
         for (int w = 0; w < warmup; ++w) {
+            std::fill(C_cand.begin(), C_cand.end(), 0.0f);
+            clobberMemory<float>();
             if (candidate == "reference") {
                 matmul_reference(A.data(), B.data(), C_cand.data(), N);
             } else if (candidate == "interchanged") {
@@ -104,6 +106,8 @@ int main(int argc, char** argv) {
 
         // Measurement runs
         for (int r = 0; r < runs; ++r) {
+            std::fill(C_cand.begin(), C_cand.end(), 0.0f);
+            clobberMemory<float>();
             auto t0 = BenchmarkClock::now();
             if (candidate == "reference") {
                 matmul_reference(A.data(), B.data(), C_cand.data(), N);
@@ -151,6 +155,8 @@ int main(int argc, char** argv) {
         doNotOptimizeAway(out_ref.data());
 
         for (int w = 0; w < warmup; ++w) {
+            std::fill(out_cand.begin(), out_cand.end(), 0.0f);
+            clobberMemory<float>();
             if (candidate == "reference") {
                 conv2d_reference(input.data(), H, W, kernel.data(), K, out_cand.data());
             } else if (candidate == "row_major") {
@@ -165,6 +171,8 @@ int main(int argc, char** argv) {
         }
 
         for (int r = 0; r < runs; ++r) {
+            std::fill(out_cand.begin(), out_cand.end(), 0.0f);
+            clobberMemory<float>();
             auto t0 = BenchmarkClock::now();
             if (candidate == "reference") {
                 conv2d_reference(input.data(), H, W, kernel.data(), K, out_cand.data());
@@ -266,6 +274,8 @@ int main(int argc, char** argv) {
         doNotOptimizeAway(out_ref.data());
 
         for (int w = 0; w < warmup; ++w) {
+            std::fill(out_cand.begin(), out_cand.end(), 0.0f);
+            clobberMemory<float>();
             if (candidate == "reference") {
                 ml_mlp_forward_reference(
                     input.data(), batch_size, in_features,
@@ -290,6 +300,8 @@ int main(int argc, char** argv) {
         }
 
         for (int r = 0; r < runs; ++r) {
+            std::fill(out_cand.begin(), out_cand.end(), 0.0f);
+            clobberMemory<float>();
             auto t0 = BenchmarkClock::now();
             if (candidate == "reference") {
                 ml_mlp_forward_reference(

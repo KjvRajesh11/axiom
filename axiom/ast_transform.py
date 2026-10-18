@@ -360,33 +360,123 @@ class ConstrainedLoopTransformer:
         # Interchange of j and k transforms sum into direct accumulation into C[row + j].
         # Precondition requires that A and B are read-only (const pointers) and C is destination.
         params = [p for p in func_decl.get("inner", []) if p.get("kind") == "ParmVarDecl"]
-        param_types = {p.get("name"): p.get("type", {}).get("qualType", "") for p in params}
+        param_info = {}
+        for p in params:
+            p_name = p.get("name", "")
+            p_type = p.get("type", {}).get("qualType", "")
+            param_info[p_name] = p_type
 
-        a_type = param_types.get("A", "")
-        b_type = param_types.get("B", "")
-        c_type = param_types.get("C", "")
+        # Find input pointers (const float*), output pointer (float* without const), and dimension (integral)
+        const_ptrs = [name for name, typ in param_info.items() if "const" in typ and ("float *" in typ or "float const *" in typ)]
+        mut_ptrs = [name for name, typ in param_info.items() if "const" not in typ and "float *" in typ]
+        dim_params = [name for name, typ in param_info.items() if any(t in typ for t in ("int", "size_t", "int32_t", "unsigned"))]
 
-        is_separated = "const" in a_type and "const" in b_type and "float *" in c_type
+        is_separated = (len(const_ptrs) >= 2 and len(mut_ptrs) >= 1 and len(dim_params) >= 1)
         if is_separated:
             report.checks.append(
                 PreconditionCheck(
                     "pointer_aliasing_and_mutability",
                     True,
-                    f"Input buffers A ({a_type}) and B ({b_type}) are const-qualified; destination C ({c_type}) is isolated.",
+                    f"Inputs {const_ptrs} are const-qualified; destination {mut_ptrs[0]} is isolated; dim param {dim_params[0]}.",
                 )
             )
         else:
-            # Not fatal if non-const, but check if aliasing violation exists
             report.checks.append(
                 PreconditionCheck(
                     "pointer_aliasing_and_mutability",
                     False,
-                    f"Parameters A ({a_type}), B ({b_type}), C ({c_type}) do not meet strict const-input separation.",
+                    f"Parameters {param_info} do not satisfy const input separation and distinct output buffer requirements.",
                 )
             )
             report.satisfied = False
             report.rejection_reasons.append(
                 "Input pointers are not const-qualified, creating potential aliasing hazards."
+            )
+
+        # 5. Verify innermost loop contains a contraction reduction pattern
+        # Look for CompoundAssignOperator (+=) or BinaryOperator (*) with ArraySubscriptExpr on inputs
+        inner_for = for_stmts[-1]
+        has_contraction = False
+        has_input_write = False
+
+        def inspect_inner_ops(node: Dict[str, Any]):
+            nonlocal has_contraction, has_input_write
+            k = node.get("kind")
+            op = node.get("opcode")
+
+            # Check if there is an assignment to an input pointer
+            if k in ("BinaryOperator", "CompoundAssignOperator") and op in ("=", "+=", "-=", "*=", "/="):
+                lhs = node.get("inner", [{}])[0]
+                lhs_refs = []
+                def get_refs(sub):
+                    if sub.get("kind") == "DeclRefExpr":
+                        lhs_refs.append(sub.get("referencedDecl", {}).get("name", ""))
+                    for sc in sub.get("inner", []):
+                        if isinstance(sc, dict):
+                            get_refs(sc)
+                get_refs(lhs)
+                for r in lhs_refs:
+                    if r in const_ptrs:
+                        has_input_write = True
+
+            # Check for accumulation product: += of something containing * of array accesses
+            if k == "CompoundAssignOperator" and op == "+=":
+                # Check RHS for multiplication
+                rhs = node.get("inner", [])[1] if len(node.get("inner", [])) > 1 else {}
+                rhs_kinds = []
+                def collect_kinds(sub):
+                    rhs_kinds.append((sub.get("kind"), sub.get("opcode")))
+                    for sc in sub.get("inner", []):
+                        if isinstance(sc, dict):
+                            collect_kinds(sc)
+                collect_kinds(rhs)
+                if any(kind == "BinaryOperator" and b_op == "*" for kind, b_op in rhs_kinds):
+                    has_contraction = True
+
+            for ch in node.get("inner", []):
+                if isinstance(ch, dict):
+                    inspect_inner_ops(ch)
+
+        inspect_inner_ops(inner_for)
+
+        if has_input_write:
+            report.satisfied = False
+            report.checks.append(
+                PreconditionCheck(
+                    "input_immutability",
+                    False,
+                    "Detected forbidden write to input buffer within loop body.",
+                )
+            )
+            report.rejection_reasons.append("Innermost loop writes to read-only input buffer.")
+        else:
+            report.checks.append(
+                PreconditionCheck(
+                    "input_immutability",
+                    True,
+                    "Input buffers are strictly read-only within loop body.",
+                )
+            )
+
+        if not has_contraction:
+            report.satisfied = False
+            report.checks.append(
+                PreconditionCheck(
+                    "contraction_pattern",
+                    False,
+                    "Innermost loop lacks canonical reduction accumulation (+ =) of vector/matrix product.",
+                )
+            )
+            report.rejection_reasons.append(
+                "Innermost loop does not match canonical matrix contraction reduction pattern."
+            )
+        else:
+            report.checks.append(
+                PreconditionCheck(
+                    "contraction_pattern",
+                    True,
+                    "Innermost loop matches canonical matrix contraction accumulation pattern.",
+                )
             )
 
         return report, loop_nest
@@ -531,10 +621,12 @@ void {candidate_id}(const float* __restrict__ A, const float* __restrict__ B, fl
 
             result.compilation_passed = True
 
-            # 5. Build and execute a standalone numerical verification test
+            # 5. Build and execute a standalone numerical verification test across multiple dimensions
+            # Includes boundary cases (N=1, 2), odd / prime / non-power-of-two (N=7, 17, 33, 127), and powers-of-two (N=16, 64)
             test_src = f"""#include "axiom_utils.hpp"
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 namespace axiom {{
     void {candidate_id}(const float* A, const float* B, float* C, int N);
@@ -542,20 +634,27 @@ namespace axiom {{
 }}
 
 int main() {{
-    const int N = 64;
-    std::vector<float> A, B, C_ref(N * N, 0.0f), C_cand(N * N, 0.0f);
-    axiom::init_matrix_f32(A, N, N, 42);
-    axiom::init_matrix_f32(B, N, N, 84);
+    const std::vector<int> test_sizes = {{1, 2, 7, 16, 17, 33, 64, 127}};
+    float global_max_rel = 0.0f;
 
-    axiom::matmul_reference(A.data(), B.data(), C_ref.data(), N);
-    axiom::{candidate_id}(A.data(), B.data(), C_cand.data(), N);
+    for (int N : test_sizes) {{
+        std::vector<float> A, B, C_ref(N * N, 0.0f), C_cand(N * N, 0.0f);
+        axiom::init_matrix_f32(A, N, N, 42 + N);
+        axiom::init_matrix_f32(B, N, N, 84 + N);
 
-    auto res = axiom::verify_results_f32(C_cand, C_ref, 1e-4, 1e-4);
-    if (!res.passed) {{
-        std::cerr << "Verification failed: max_rel=" << res.max_relative_diff << "\\n";
-        return 1;
+        axiom::matmul_reference(A.data(), B.data(), C_ref.data(), N);
+        axiom::{candidate_id}(A.data(), B.data(), C_cand.data(), N);
+
+        auto res = axiom::verify_results_f32(C_cand, C_ref, 1e-4, 1e-4);
+        if (!res.passed) {{
+            std::cerr << "Verification failed for N=" << N << ": max_rel=" << res.max_relative_diff << "\\n";
+            return 1;
+        }}
+        if (res.max_relative_diff > global_max_rel) {{
+            global_max_rel = res.max_relative_diff;
+        }}
     }}
-    std::cout << "OK max_rel=" << res.max_relative_diff << "\\n";
+    std::cout << "OK max_rel=" << global_max_rel << "\\n";
     return 0;
 }}
 """

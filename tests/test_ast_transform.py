@@ -180,3 +180,103 @@ def test_ast_syntax_error_handling():
 
         assert res.success is False
         assert res.rejection_reason == "AST extraction failure"
+
+
+def test_ast_reject_insufficient_loop_depth():
+    src_single_loop = """#include "axiom_utils.hpp"
+
+namespace axiom {
+void vector_add(const float* A, const float* B, float* C, int N) {
+    for (int i = 0; i < N; ++i) {
+        C[i] = A[i] + B[i];
+    }
+}
+}
+"""
+    transformer = ConstrainedLoopTransformer()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "vec_add.cpp")
+        with open(src_path, "w") as f:
+            f.write(src_single_loop)
+
+        cand_path = os.path.join(tmpdir, "cand.cpp")
+        res = transformer.transform_loop_interchange(
+            source_file=src_path,
+            func_name="vector_add",
+            output_candidate_path=cand_path,
+        )
+
+        assert res.success is False
+        assert res.preconditions.satisfied is False
+        assert any("depth" in r.lower() for r in res.preconditions.rejection_reasons)
+
+
+def test_ast_reject_non_contraction_stencil():
+    # 3-loop nest but without contraction product (e.g. 3D grid copy)
+    src_stencil = """#include "axiom_utils.hpp"
+
+namespace axiom {
+void grid_copy(const float* A, const float* B, float* C, int N) {
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
+            for (int k = 0; k < N; ++k) {
+                C[i * N + j] = B[k * N + j]; // No multiplication / reduction
+            }
+        }
+    }
+}
+}
+"""
+    transformer = ConstrainedLoopTransformer()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "stencil.cpp")
+        with open(src_path, "w") as f:
+            f.write(src_stencil)
+
+        cand_path = os.path.join(tmpdir, "cand.cpp")
+        res = transformer.transform_loop_interchange(
+            source_file=src_path,
+            func_name="grid_copy",
+            output_candidate_path=cand_path,
+        )
+
+        assert res.success is False
+        assert res.preconditions.satisfied is False
+        assert any("contraction" in r.lower() for r in res.preconditions.rejection_reasons)
+
+
+def test_ast_reject_input_buffer_write():
+    # 3-loop nest where input buffer A is written to (mutation hazard)
+    src_input_write = """#include "axiom_utils.hpp"
+
+namespace axiom {
+void matmul_mutates_input(const float* A, const float* B, float* C, int N) {
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
+            float sum = 0.0f;
+            for (int k = 0; k < N; ++k) {
+                sum += A[i * N + k] * B[k * N + j];
+                const_cast<float*>(A)[i * N + k] = 0.0f; // FORBIDDEN WRITE
+            }
+            C[i * N + j] = sum;
+        }
+    }
+}
+}
+"""
+    transformer = ConstrainedLoopTransformer()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "input_write.cpp")
+        with open(src_path, "w") as f:
+            f.write(src_input_write)
+
+        cand_path = os.path.join(tmpdir, "cand.cpp")
+        res = transformer.transform_loop_interchange(
+            source_file=src_path,
+            func_name="matmul_mutates_input",
+            output_candidate_path=cand_path,
+        )
+
+        assert res.success is False
+        assert res.preconditions.satisfied is False
+        assert any("write" in r.lower() or "input" in r.lower() for r in res.preconditions.rejection_reasons)

@@ -78,3 +78,55 @@ def test_unreachable_host_error_handling():
 
     with pytest.raises(ConnectionError):
         runner.run_remote_experiment(workload_id="matmul", candidate_id="avx512")
+
+
+def test_mock_amd_unsupported_instruction_rejection():
+    # Transport reporting host CPU without AVX-512
+    transport = MockAMDTransport(simulate_no_avx512=True)
+    runner = RemoteAmdRunner(transport)
+    result = runner.run_remote_experiment(workload_id="matmul", candidate_id="avx512")
+
+    assert result.status.value == "UNSUPPORTED_INSTRUCTION_FAILURE"
+    assert result.passed_correctness is False
+    assert "AVX-512" in result.error_message
+
+
+def test_mock_amd_remote_build_failure():
+    # Transport simulating compiler/linker error during remote cmake build
+    transport = MockAMDTransport(simulate_build_failure=True)
+    runner = RemoteAmdRunner(transport)
+    result = runner.run_remote_experiment(workload_id="matmul", candidate_id="avx512")
+
+    assert result.status.value == "REMOTE_COMPILATION_FAILURE"
+    assert result.passed_correctness is False
+    assert "compilation failed" in result.error_message.lower()
+    assert len(result.compiler_output) > 0
+
+
+def test_mock_amd_remote_correctness_failure():
+    # Transport simulating failure in remote correctness tests
+    transport = MockAMDTransport(simulate_correctness_failure=True)
+    runner = RemoteAmdRunner(transport)
+    result = runner.run_remote_experiment(workload_id="matmul", candidate_id="avx512")
+
+    assert result.status.value == "CORRECTNESS_FAILURE"
+    assert result.passed_correctness is False
+    assert "correctness" in result.error_message.lower()
+    assert len(result.correctness_output) > 0
+
+
+def test_mock_amd_remote_benchmark_failure():
+    # Transport simulating crash/segfault in benchmark runner
+    transport = MockAMDTransport(simulate_benchmark_failure=True)
+    runner = RemoteAmdRunner(transport)
+    result = runner.run_remote_experiment(workload_id="matmul", candidate_id="avx512")
+
+    assert result.status.value == "BENCHMARK_FAILURE"
+    assert result.passed_correctness is False
+
+
+def test_payload_packing_integrity():
+    from axiom.remote import pack_remote_payload
+    b64_str, sha256_hex = pack_remote_payload()
+    assert len(b64_str) > 0
+    assert len(sha256_hex) == 64
