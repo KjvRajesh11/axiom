@@ -1,0 +1,212 @@
+{
+  "architecture": "arm64",
+  "cpu_model": "Apple M4",
+  "empirical_ceilings": [
+    {
+      "name": "Empirical Observed Single-Core Compute (GEMM NEON)",
+      "ceiling_type": "compute",
+      "value": 53.1,
+      "unit": "GFLOP/s",
+      "is_empirical": true,
+      "source_and_assumptions": "Measured on host Apple M4 running hand-tuned NEON 4x4 microkernel (matmul_neon N=128)."
+    },
+    {
+      "name": "Empirical Observed All-Core Compute (GEMM 10-Core)",
+      "ceiling_type": "compute",
+      "value": 101.2,
+      "unit": "GFLOP/s",
+      "is_empirical": true,
+      "source_and_assumptions": "Measured on host Apple M4 running matmul_multithreaded N=512 across 10 cores."
+    },
+    {
+      "name": "Empirical Single-Core Sequential DRAM Bandwidth",
+      "ceiling_type": "bandwidth",
+      "value": 8.2,
+      "unit": "GB/s",
+      "is_empirical": true,
+      "source_and_assumptions": "Measured on host Apple M4 using memory_locality sequential working-set sweep (32 MB array)."
+    }
+  ],
+  "theoretical_ceilings": [
+    {
+      "name": "Theoretical Peak Single-Core NEON Compute",
+      "ceiling_type": "compute",
+      "value": 70.4,
+      "unit": "GFLOP/s",
+      "is_empirical": false,
+      "source_and_assumptions": "Apple M4 performance core @ 4.4 GHz: 2 NEON FMA units * 4 f32 lanes * 2 ops = 16 FLOP/cycle * 4.4 GHz = 70.4 GFLOP/s."
+    },
+    {
+      "name": "Theoretical Peak All-Core Compute (10-Core Sustained)",
+      "ceiling_type": "compute",
+      "value": 450.0,
+      "unit": "GFLOP/s",
+      "is_empirical": false,
+      "source_and_assumptions": "Apple M4 (4P + 6E cores) theoretical all-core sustained SIMD estimate under power budget."
+    },
+    {
+      "name": "Theoretical DRAM Memory Bandwidth",
+      "ceiling_type": "bandwidth",
+      "value": 120.0,
+      "unit": "GB/s",
+      "is_empirical": false,
+      "source_and_assumptions": "Apple M4 128-bit LPDDR5X-7500 bus peak theoretical bandwidth: 7500 MT/s * 16 bytes = 120 GB/s."
+    }
+  ],
+  "workload_points": [
+    {
+      "workload_id": "matmul",
+      "candidate_id": "reference",
+      "problem_size": 128,
+      "arithmetic_intensity": 0.49230769230769234,
+      "measured_gflops": 4.254579,
+      "median_time_ms": 0.985833,
+      "stddev_time_ms": 0.02014,
+      "regime": "memory_bound",
+      "efficiency_vs_empirical_ceiling_pct": 100.0,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "reference",
+      "problem_size": 256,
+      "arithmetic_intensity": 0.49612403100775193,
+      "measured_gflops": 3.30936,
+      "median_time_ms": 10.13925,
+      "stddev_time_ms": 0.015535,
+      "regime": "memory_bound",
+      "efficiency_vs_empirical_ceiling_pct": 81.34669207317073,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "reference",
+      "problem_size": 512,
+      "arithmetic_intensity": 0.4980544747081712,
+      "measured_gflops": 2.953933,
+      "median_time_ms": 90.873917,
+      "stddev_time_ms": 1.075706,
+      "regime": "memory_bound",
+      "efficiency_vs_empirical_ceiling_pct": 72.32858050685977,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "interchanged",
+      "problem_size": 128,
+      "arithmetic_intensity": 21.333333333333332,
+      "measured_gflops": 39.724807,
+      "median_time_ms": 0.105584,
+      "stddev_time_ms": 0.002764,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 74.81131261770244,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "interchanged",
+      "problem_size": 256,
+      "arithmetic_intensity": 42.666666666666664,
+      "measured_gflops": 31.982005,
+      "median_time_ms": 1.049166,
+      "stddev_time_ms": 0.003501,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 60.229764595103575,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "interchanged",
+      "problem_size": 512,
+      "arithmetic_intensity": 85.33333333333333,
+      "measured_gflops": 32.749011,
+      "median_time_ms": 8.19675,
+      "stddev_time_ms": 0.012775,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 61.674220338983055,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "neon",
+      "problem_size": 128,
+      "arithmetic_intensity": 21.333333333333332,
+      "measured_gflops": 51.332216,
+      "median_time_ms": 0.081709,
+      "stddev_time_ms": 0.00344,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 96.67083992467043,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "neon",
+      "problem_size": 256,
+      "arithmetic_intensity": 42.666666666666664,
+      "measured_gflops": 40.033158,
+      "median_time_ms": 0.838166,
+      "stddev_time_ms": 0.017707,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 75.39201129943503,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "neon",
+      "problem_size": 512,
+      "arithmetic_intensity": 85.33333333333333,
+      "measured_gflops": 39.465402,
+      "median_time_ms": 6.801792,
+      "stddev_time_ms": 0.112994,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 74.32279096045197,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "multithreaded",
+      "problem_size": 128,
+      "arithmetic_intensity": 21.333333333333332,
+      "measured_gflops": 51.595532,
+      "median_time_ms": 0.081292,
+      "stddev_time_ms": 0.018092,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 97.16672693032015,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "multithreaded",
+      "problem_size": 256,
+      "arithmetic_intensity": 42.666666666666664,
+      "measured_gflops": 80.781058,
+      "median_time_ms": 0.415375,
+      "stddev_time_ms": 0.001781,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 100.0,
+      "notes": ""
+    },
+    {
+      "workload_id": "matmul",
+      "candidate_id": "multithreaded",
+      "problem_size": 512,
+      "arithmetic_intensity": 85.33333333333333,
+      "measured_gflops": 109.991992,
+      "median_time_ms": 2.4405,
+      "stddev_time_ms": 0.02902,
+      "regime": "compute_bound",
+      "efficiency_vs_empirical_ceiling_pct": 100.0,
+      "notes": ""
+    }
+  ],
+  "ridge_points": {
+    "Empirical Observed Single-Core Compute (GEMM NEON) / Empirical Single-Core Sequential DRAM Bandwidth": 6.48,
+    "Empirical Observed All-Core Compute (GEMM 10-Core) / Empirical Single-Core Sequential DRAM Bandwidth": 12.34
+  },
+  "methodology_notes": "Empirical Roofline Model evaluates computational throughput (GFLOP/s) as a function of operational intensity (FLOP/byte). Points to the left of the ridge point are strictly bound by memory bandwidth; points to the right are compute-bound.",
+  "limitations": [
+    "Roofline models steady-state data transfer; it does not model latency, TLB misses, or prefetcher delays.",
+    "Theoretical ceilings reflect maximum theoretical instruction retirement rates, not sustained thermal steady-state.",
+    "Compulsory memory traffic represents the minimum theoretical byte movement assuming ideal cache reuse."
+  ]
+}

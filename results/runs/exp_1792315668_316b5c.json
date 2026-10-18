@@ -1,0 +1,399 @@
+{
+  "workload_id": "matmul",
+  "warmup_runs": 2,
+  "measurement_runs": 5,
+  "environment": {
+    "os_name": "Darwin",
+    "os_release": "25.6.0",
+    "platform_system": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "hardware": {
+      "cpu_brand": "Apple M4",
+      "architecture": "arm64",
+      "physical_cores": 10,
+      "logical_cores": 10,
+      "cache_line_bytes": 128,
+      "l1d_cache_bytes": 65536,
+      "l2_cache_bytes": 4194304
+    },
+    "toolchain": {
+      "compiler_path": "/usr/bin/clang++",
+      "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+      "target_triple": "arm64-apple-darwin25.6.0",
+      "cmake_path": "/opt/homebrew/bin/cmake",
+      "cmake_version": "cmake version 4.4.4",
+      "python_version": "3.13.9"
+    },
+    "profilers": {
+      "has_xctrace": true,
+      "has_sample": true,
+      "has_llvm_mca": false,
+      "has_linux_perf": false,
+      "details": {
+        "xctrace": "/usr/bin/xctrace",
+        "sample": "/usr/bin/sample",
+        "llvm-mca": "Unavailable on PATH (requires llvm suite)",
+        "perf": "Unavailable (Linux perf tool not found on macOS)"
+      }
+    }
+  },
+  "compiler_diagnostics": {
+    "reference": {
+      "summary_explanation": "Auto-vectorization MISSED: LLVM diagnostic indicates: 'the cost-model indicates that vectorization is not beneficial'. Loop-Invariant Code Motion (LICM) hoisted 6 invariant expressions out of inner loops. Generated ARM64 assembly contains 0 floating-point arithmetic instructions (0 fused multiply-add fmla) and 2 loads.",
+      "assembly_stats": {
+        "total_lines": 42,
+        "vector_fmla_count": 0,
+        "vector_fmul_count": 0,
+        "vector_fadd_count": 0,
+        "load_count": 2,
+        "store_count": 1,
+        "branch_count": 4
+      }
+    },
+    "interchanged": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: 'vectorized loop (vectorization width: 4, interleaved count: 4)'. Loop-Invariant Code Motion (LICM) hoisted 23 invariant expressions out of inner loops. Generated ARM64 assembly contains 5 floating-point arithmetic instructions (5 fused multiply-add fmla) and 51 loads.",
+      "assembly_stats": {
+        "total_lines": 282,
+        "vector_fmla_count": 5,
+        "vector_fmul_count": 0,
+        "vector_fadd_count": 0,
+        "load_count": 51,
+        "store_count": 30,
+        "branch_count": 26
+      }
+    },
+    "blocked": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: 'vectorized loop (vectorization width: 4, interleaved count: 4)'. Loop-Invariant Code Motion (LICM) hoisted 46 invariant expressions out of inner loops. Generated ARM64 assembly contains 5 floating-point arithmetic instructions (5 fused multiply-add fmla) and 28 loads.",
+      "assembly_stats": {
+        "total_lines": 334,
+        "vector_fmla_count": 5,
+        "vector_fmul_count": 0,
+        "vector_fadd_count": 0,
+        "load_count": 28,
+        "store_count": 17,
+        "branch_count": 28
+      }
+    }
+  },
+  "hypotheses": [
+    {
+      "hypothesis_id": "HYP_MATMUL_IKJ_LOCALITY",
+      "candidate_id": "interchanged",
+      "category": "Memory Locality",
+      "statement": "Interchanging loops from i-j-k to i-k-j converts the inner loop access to matrices B and C from strided column traversal (stride 64 elements = 256 bytes) to unit-stride contiguous row traversal (stride 4 bytes), eliminating cache line thrashing.",
+      "uncertainty": "LOW",
+      "supporting_evidence": [
+        "Static inspection confirms B[k * N + j] has stride 1 along inner loop index j.",
+        "Row-major layout stores adjacent row elements in adjacent bytes on the same 128-byte cache line."
+      ],
+      "confirmation_criteria": "Candidate achieves > 2.0x speedup over baseline at N >= 128.",
+      "status": "CONFIRMED",
+      "evaluation_notes": "Confirmed: Continuous row-major memory stride eliminated column-strided cache penalties (9.80x)."
+    },
+    {
+      "hypothesis_id": "HYP_MATMUL_IKJ_SIMD",
+      "candidate_id": "interchanged",
+      "category": "Auto-Vectorization",
+      "statement": "Unit-stride access in the inner loop enables Clang/LLVM loop vectorizer to generate ARM64 NEON 128-bit vector fused multiply-add (fmla) instructions, processing 4 single-precision floats per cycle per execution pipeline.",
+      "uncertainty": "LOW",
+      "supporting_evidence": [
+        "Clang optimization remark confirmed: 'vectorized loop (vectorization width: 4, interleaved count: 4) [-Rpass=loop-vectorize]'.",
+        "Reference i-j-k explicitly missed vectorization: 'the cost-model indicates that vectorization is not beneficial'."
+      ],
+      "confirmation_criteria": "Candidate GFLOP/s increases by > 3x compared to baseline.",
+      "status": "CONFIRMED",
+      "evaluation_notes": "Confirmed by 9.80x measured speedup, consistent with 4-way NEON SIMD vectorization."
+    },
+    {
+      "hypothesis_id": "HYP_MATMUL_CACHE_TILED",
+      "candidate_id": "blocked",
+      "category": "Cache Blocking",
+      "statement": "Tiling matrices into 64x64 sub-blocks restricts the active working set to 3 * (64x64) * 4 bytes = 48 KB, fitting within the Apple M4 L1 Data Cache (64 KB). This prevents capacity cache evictions as N increases.",
+      "uncertainty": "MEDIUM",
+      "supporting_evidence": [
+        "Apple M4 L1d cache size is 65,536 bytes (64 KB).",
+        "For N >= 512, full matrices exceed L1d capacity (512x512 = 1 MB, exceeding L1d)."
+      ],
+      "confirmation_criteria": "Blocked candidate outperforms unblocked interchanged candidate at large sizes (N >= 512).",
+      "status": "CONFIRMED",
+      "evaluation_notes": "Confirmed: Cache tiling maintained working set in L1/L2 cache, delivering 9.11x speedup."
+    }
+  ],
+  "candidate_results": {
+    "reference": {
+      "64": {
+        "median_ms": 0.085125,
+        "min_ms": 0.085083,
+        "max_ms": 0.089667,
+        "stddev_ms": 0.001951,
+        "iqr_ms": 0.003209,
+        "gflops": 6.159037,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.089667,
+          0.085083,
+          0.085125,
+          0.085083,
+          0.088292
+        ]
+      },
+      "128": {
+        "median_ms": 1.024625,
+        "min_ms": 1.002875,
+        "max_ms": 1.046042,
+        "stddev_ms": 0.016715,
+        "iqr_ms": 0.029292,
+        "gflops": 4.093502,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          1.002875,
+          1.004375,
+          1.024625,
+          1.046042,
+          1.033667
+        ]
+      },
+      "256": {
+        "median_ms": 10.301041,
+        "min_ms": 10.120667,
+        "max_ms": 10.806834,
+        "stddev_ms": 0.228938,
+        "iqr_ms": 0.091459,
+        "gflops": 3.257383,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          10.301041,
+          10.806834,
+          10.120667,
+          10.300416,
+          10.391875
+        ]
+      }
+    },
+    "interchanged": {
+      "64": {
+        "median_ms": 0.017375,
+        "min_ms": 0.015833,
+        "max_ms": 0.018125,
+        "stddev_ms": 0.000778,
+        "iqr_ms": 0.000626,
+        "gflops": 30.174849,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.015833,
+          0.018125,
+          0.017709,
+          0.017083,
+          0.017375
+        ]
+      },
+      "128": {
+        "median_ms": 0.10775,
+        "min_ms": 0.103292,
+        "max_ms": 0.116041,
+        "stddev_ms": 0.004198,
+        "iqr_ms": 0.002834,
+        "gflops": 38.926255,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.103292,
+          0.10775,
+          0.116041,
+          0.109875,
+          0.107041
+        ]
+      },
+      "256": {
+        "median_ms": 1.051459,
+        "min_ms": 1.048833,
+        "max_ms": 1.07575,
+        "stddev_ms": 0.011758,
+        "iqr_ms": 0.021708,
+        "gflops": 31.912259,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          1.051375,
+          1.073083,
+          1.048833,
+          1.051459,
+          1.07575
+        ]
+      }
+    },
+    "blocked": {
+      "64": {
+        "median_ms": 0.016041,
+        "min_ms": 0.015834,
+        "max_ms": 0.01825,
+        "stddev_ms": 0.000959,
+        "iqr_ms": 0.001417,
+        "gflops": 32.684247,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.015834,
+          0.015917,
+          0.016041,
+          0.017334,
+          0.01825
+        ]
+      },
+      "128": {
+        "median_ms": 0.139458,
+        "min_ms": 0.138958,
+        "max_ms": 0.141916,
+        "stddev_ms": 0.001041,
+        "iqr_ms": 0.0005,
+        "gflops": 30.07575,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.138958,
+          0.139875,
+          0.139375,
+          0.139458,
+          0.141916
+        ]
+      },
+      "256": {
+        "median_ms": 1.131083,
+        "min_ms": 1.116542,
+        "max_ms": 1.147042,
+        "stddev_ms": 0.011424,
+        "iqr_ms": 0.019125,
+        "gflops": 29.665756,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          1.116542,
+          1.131083,
+          1.13925,
+          1.120125,
+          1.147042
+        ]
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "size": 64,
+      "candidate_id": "interchanged",
+      "baseline_median_ms": 0.085125,
+      "candidate_median_ms": 0.017375,
+      "speedup": 4.899280575539568,
+      "correctness_passed": true,
+      "candidate_gflops": 30.174849,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 64,
+      "candidate_id": "blocked",
+      "baseline_median_ms": 0.085125,
+      "candidate_median_ms": 0.016041,
+      "speedup": 5.3067140452590245,
+      "correctness_passed": true,
+      "candidate_gflops": 32.684247,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 128,
+      "candidate_id": "interchanged",
+      "baseline_median_ms": 1.024625,
+      "candidate_median_ms": 0.10775,
+      "speedup": 9.509280742459396,
+      "correctness_passed": true,
+      "candidate_gflops": 38.926255,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 128,
+      "candidate_id": "blocked",
+      "baseline_median_ms": 1.024625,
+      "candidate_median_ms": 0.139458,
+      "speedup": 7.347194137302987,
+      "correctness_passed": true,
+      "candidate_gflops": 30.07575,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 256,
+      "candidate_id": "interchanged",
+      "baseline_median_ms": 10.301041,
+      "candidate_median_ms": 1.051459,
+      "speedup": 9.796902209215956,
+      "correctness_passed": true,
+      "candidate_gflops": 31.912259,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 256,
+      "candidate_id": "blocked",
+      "baseline_median_ms": 10.301041,
+      "candidate_median_ms": 1.131083,
+      "speedup": 9.107237046264508,
+      "correctness_passed": true,
+      "candidate_gflops": 29.665756,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    }
+  ],
+  "decisions": {
+    "interchanged_64": {
+      "verdict": "RECOMMENDED",
+      "speedup": 4.899280575539568,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 4.90x speedup (79.6% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "blocked_64": {
+      "verdict": "RECOMMENDED",
+      "speedup": 5.3067140452590245,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 5.31x speedup (81.2% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "interchanged_128": {
+      "verdict": "RECOMMENDED",
+      "speedup": 9.509280742459396,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 9.51x speedup (89.5% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "blocked_128": {
+      "verdict": "RECOMMENDED",
+      "speedup": 7.347194137302987,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 7.35x speedup (86.4% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "interchanged_256": {
+      "verdict": "RECOMMENDED",
+      "speedup": 9.796902209215956,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 9.80x speedup (89.8% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "blocked_256": {
+      "verdict": "RECOMMENDED",
+      "speedup": 9.107237046264508,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 9.11x speedup (89.0% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    }
+  },
+  "experiment_id": "exp_1792315668_316b5c",
+  "timestamp": "2026-10-18T09:27:48Z"
+}

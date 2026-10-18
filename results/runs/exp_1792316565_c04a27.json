@@ -1,0 +1,354 @@
+{
+  "workload_id": "ml_infer",
+  "warmup_runs": 2,
+  "measurement_runs": 10,
+  "environment": {
+    "os_name": "Darwin",
+    "os_release": "25.6.0",
+    "platform_system": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "hardware": {
+      "cpu_brand": "Apple M4",
+      "architecture": "arm64",
+      "physical_cores": 10,
+      "logical_cores": 10,
+      "cache_line_bytes": 128,
+      "l1d_cache_bytes": 65536,
+      "l2_cache_bytes": 4194304
+    },
+    "toolchain": {
+      "compiler_path": "/usr/bin/clang++",
+      "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+      "target_triple": "arm64-apple-darwin25.6.0",
+      "cmake_path": "/opt/homebrew/bin/cmake",
+      "cmake_version": "cmake version 4.4.4",
+      "python_version": "3.13.9"
+    },
+    "profilers": {
+      "has_xctrace": true,
+      "has_sample": true,
+      "has_llvm_mca": false,
+      "has_linux_perf": false,
+      "details": {
+        "xctrace": "/usr/bin/xctrace",
+        "sample": "/usr/bin/sample",
+        "llvm-mca": "Unavailable on PATH (requires llvm suite)",
+        "perf": "Unavailable (Linux perf tool not found on macOS)"
+      }
+    }
+  },
+  "compiler_diagnostics": {
+    "reference": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: ''_ZNSt3__16vectorIfNS_9allocatorIfEEE16__destroy_vectorC2B9nqe210106ERS3_' inlined into '_ZNSt3__16vectorIfNS_9allocatorIfEEE16__destroy_vectorC1B9nqe210106ERS3_' with (cost=-35, threshold=375) at callsite __destroy_vector:0:93;'. Loop-Invariant Code Motion (LICM) hoisted 251 invariant expressions out of inner loops. Generated ARM64 assembly contains 145 floating-point arithmetic instructions (15 fused multiply-add fmla) and 192 loads.",
+      "assembly_stats": {
+        "total_lines": 2104,
+        "vector_fmla_count": 15,
+        "vector_fmul_count": 26,
+        "vector_fadd_count": 104,
+        "load_count": 192,
+        "store_count": 64,
+        "branch_count": 260
+      }
+    },
+    "vectorized": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: ''_ZNSt3__16vectorIfNS_9allocatorIfEEE16__destroy_vectorC2B9nqe210106ERS3_' inlined into '_ZNSt3__16vectorIfNS_9allocatorIfEEE16__destroy_vectorC1B9nqe210106ERS3_' with (cost=-35, threshold=375) at callsite __destroy_vector:0:93;'. Loop-Invariant Code Motion (LICM) hoisted 251 invariant expressions out of inner loops. Generated ARM64 assembly contains 145 floating-point arithmetic instructions (15 fused multiply-add fmla) and 192 loads.",
+      "assembly_stats": {
+        "total_lines": 2104,
+        "vector_fmla_count": 15,
+        "vector_fmul_count": 26,
+        "vector_fadd_count": 104,
+        "load_count": 192,
+        "store_count": 64,
+        "branch_count": 260
+      }
+    }
+  },
+  "hypotheses": [
+    {
+      "hypothesis_id": "HYP_ML_INFER_VECTOR_STREAMING",
+      "candidate_id": "vectorized",
+      "category": "ML Inference Batching",
+      "bound_regime": "COMPUTE_BOUND",
+      "statement": "Streaming dot-product accumulations along contiguous weight rows combined with vectorized ReLU significantly increases arithmetic throughput for batch inference.",
+      "uncertainty": "LOW",
+      "supporting_evidence": [
+        "Dense layer matrix-vector multiplications share weights across input batches.",
+        "Inner loop auto-vectorization compiles to NEON vector operations."
+      ],
+      "confirmation_criteria": "Vectorized forward pass achieves > 1.2x speedup over scalar forward pass.",
+      "status": "CONFIRMED",
+      "evaluation_notes": "Confirmed: Row streaming and vectorized activations delivered 6.23x speedup in forward pass."
+    }
+  ],
+  "candidate_results": {
+    "reference": {
+      "1": {
+        "median_ms": 0.006896,
+        "min_ms": 0.006875,
+        "max_ms": 0.010875,
+        "stddev_ms": 0.00119,
+        "iqr_ms": 8.4e-05,
+        "gflops": 4.937713,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.006959,
+          0.006875,
+          0.006875,
+          0.006875,
+          0.010875,
+          0.007042,
+          0.006916,
+          0.006875,
+          0.006917,
+          0.006875
+        ]
+      },
+      "8": {
+        "median_ms": 0.05475,
+        "min_ms": 0.054667,
+        "max_ms": 0.055625,
+        "stddev_ms": 0.000269,
+        "iqr_ms": 8.4e-05,
+        "gflops": 4.97505,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.054792,
+          0.055625,
+          0.05475,
+          0.054792,
+          0.054667,
+          0.054791,
+          0.05475,
+          0.054667,
+          0.054708,
+          0.05475
+        ]
+      },
+      "32": {
+        "median_ms": 0.219375,
+        "min_ms": 0.218917,
+        "max_ms": 0.234,
+        "stddev_ms": 0.004879,
+        "iqr_ms": 0.002417,
+        "gflops": 4.966546,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.219334,
+          0.219125,
+          0.219208,
+          0.219042,
+          0.219416,
+          0.218917,
+          0.221542,
+          0.221542,
+          0.22875,
+          0.234
+        ]
+      },
+      "64": {
+        "median_ms": 0.447937,
+        "min_ms": 0.447833,
+        "max_ms": 0.457375,
+        "stddev_ms": 0.00402,
+        "iqr_ms": 0.008709,
+        "gflops": 4.864679,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.447833,
+          0.447833,
+          0.450459,
+          0.457375,
+          0.447916,
+          0.447917,
+          0.447875,
+          0.456584,
+          0.456625,
+          0.447958
+        ]
+      }
+    },
+    "vectorized": {
+      "1": {
+        "median_ms": 0.001041,
+        "min_ms": 0.001,
+        "max_ms": 0.001875,
+        "stddev_ms": 0.000312,
+        "iqr_ms": 0.000125,
+        "gflops": 32.691311,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.001083,
+          0.001041,
+          0.001,
+          0.001,
+          0.001041,
+          0.00175,
+          0.001875,
+          0.001125,
+          0.001042,
+          0.001
+        ]
+      },
+      "8": {
+        "median_ms": 0.00875,
+        "min_ms": 0.008708,
+        "max_ms": 0.010125,
+        "stddev_ms": 0.000609,
+        "iqr_ms": 0.001208,
+        "gflops": 31.1296,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.010125,
+          0.00875,
+          0.009958,
+          0.008792,
+          0.00875,
+          0.010125,
+          0.00875,
+          0.00875,
+          0.008708,
+          0.008708
+        ]
+      },
+      "32": {
+        "median_ms": 0.035625,
+        "min_ms": 0.034667,
+        "max_ms": 0.038792,
+        "stddev_ms": 0.001572,
+        "iqr_ms": 0.002958,
+        "gflops": 30.583467,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.035083,
+          0.036083,
+          0.038792,
+          0.038792,
+          0.034667,
+          0.03475,
+          0.034709,
+          0.035167,
+          0.037708,
+          0.03625
+        ]
+      },
+      "64": {
+        "median_ms": 0.071937,
+        "min_ms": 0.069875,
+        "max_ms": 0.080959,
+        "stddev_ms": 0.003169,
+        "iqr_ms": 0.003958,
+        "gflops": 30.291183,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.073792,
+          0.07125,
+          0.070625,
+          0.074916,
+          0.080959,
+          0.070625,
+          0.069875,
+          0.074583,
+          0.072625,
+          0.070541
+        ]
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "size": 1,
+      "candidate_id": "vectorized",
+      "baseline_median_ms": 0.006896,
+      "candidate_median_ms": 0.001041,
+      "speedup": 6.624399615754083,
+      "correctness_passed": true,
+      "candidate_gflops": 32.691311,
+      "candidate_p95_ms": 0.00175,
+      "candidate_p99_ms": 0.00175,
+      "p_value": 2.9614611999368e-50,
+      "notes": "WARNING: High measurement variance (Baseline CV=17.2%, Candidate CV=27.5%)."
+    },
+    {
+      "size": 8,
+      "candidate_id": "vectorized",
+      "baseline_median_ms": 0.05475,
+      "candidate_median_ms": 0.00875,
+      "speedup": 6.257142857142856,
+      "correctness_passed": true,
+      "candidate_gflops": 31.1296,
+      "candidate_p95_ms": 0.010125,
+      "candidate_p99_ms": 0.010125,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 32,
+      "candidate_id": "vectorized",
+      "baseline_median_ms": 0.219375,
+      "candidate_median_ms": 0.035625,
+      "speedup": 6.157894736842105,
+      "correctness_passed": true,
+      "candidate_gflops": 30.583467,
+      "candidate_p95_ms": 0.038792,
+      "candidate_p99_ms": 0.038792,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 64,
+      "candidate_id": "vectorized",
+      "baseline_median_ms": 0.447937,
+      "candidate_median_ms": 0.071937,
+      "speedup": 6.2267956684321,
+      "correctness_passed": true,
+      "candidate_gflops": 30.291183,
+      "candidate_p95_ms": 0.074916,
+      "candidate_p99_ms": 0.074916,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    }
+  ],
+  "decisions": {
+    "vectorized_1": {
+      "verdict": "INCONCLUSIVE_NOISY",
+      "speedup": 6.624399615754083,
+      "rationale": "Measurement noise is too high to accept or reject reliably (Baseline CV=17.2%, Candidate CV=27.5%). Rerun with more measurement trials or on an isolated CPU core.",
+      "statistically_significant": true
+    },
+    "vectorized_8": {
+      "verdict": "RECOMMENDED",
+      "speedup": 6.257142857142856,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 6.26x speedup (84.0% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "vectorized_32": {
+      "verdict": "RECOMMENDED",
+      "speedup": 6.157894736842105,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 6.16x speedup (83.8% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "vectorized_64": {
+      "verdict": "RECOMMENDED",
+      "speedup": 6.2267956684321,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 6.23x speedup (83.9% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    }
+  },
+  "experiment_id": "exp_1792316565_c04a27",
+  "timestamp": "2026-10-18T09:42:45Z"
+}

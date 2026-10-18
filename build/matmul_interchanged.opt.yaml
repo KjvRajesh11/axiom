@@ -1,0 +1,251 @@
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 31 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 31 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 22, Column: 27 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 22, Column: 27 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            getelementptr
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            loop-vectorize
+Name:            Vectorized
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'vectorized '
+  - String:          ''
+  - String:          'loop (vectorization width: '
+  - VectorizationFactor: '4'
+  - String:          ', interleaved count: '
+  - InterleaveCount: '4'
+  - String:          ')'
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 27, Column: 13 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 27, Column: 13 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                   Line: 20, Column: 36 }
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            getelementptr
+    DebugLoc:        { File: 'cpp/workloads/matmul/matmul_interchanged.cpp', 
+                       Line: 20, Column: 36 }
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            icmp
+...
+--- !Passed
+Pass:            licm
+Name:            Hoisted
+Function:        _ZN5axiom19matmul_interchangedEPKfS1_Pfi
+Args:
+  - String:          'hoisting '
+  - Inst:            and
+...

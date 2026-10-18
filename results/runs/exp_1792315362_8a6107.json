@@ -1,0 +1,416 @@
+{
+  "workload_id": "conv2d",
+  "warmup_runs": 3,
+  "measurement_runs": 10,
+  "environment": {
+    "os_name": "Darwin",
+    "os_release": "25.6.0",
+    "platform_system": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "hardware": {
+      "cpu_brand": "Apple M4",
+      "architecture": "arm64",
+      "physical_cores": 10,
+      "logical_cores": 10,
+      "cache_line_bytes": 128,
+      "l1d_cache_bytes": 65536,
+      "l2_cache_bytes": 4194304
+    },
+    "toolchain": {
+      "compiler_path": "/usr/bin/clang++",
+      "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+      "target_triple": "arm64-apple-darwin25.6.0",
+      "cmake_path": "/opt/homebrew/bin/cmake",
+      "cmake_version": "cmake version 4.4.4",
+      "python_version": "3.13.9"
+    },
+    "profilers": {
+      "has_xctrace": true,
+      "has_sample": true,
+      "has_llvm_mca": false,
+      "has_linux_perf": false,
+      "details": {
+        "xctrace": "/usr/bin/xctrace",
+        "sample": "/usr/bin/sample",
+        "llvm-mca": "Unavailable on PATH (requires llvm suite)",
+        "perf": "Unavailable (Linux perf tool not found on macOS)"
+      }
+    }
+  },
+  "compiler_diagnostics": {
+    "reference": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: 'vectorized loop (vectorization width: 4, interleaved count: 4)'. Loop-Invariant Code Motion (LICM) hoisted 81 invariant expressions out of inner loops. Generated ARM64 assembly contains 25 floating-point arithmetic instructions (0 fused multiply-add fmla) and 20 loads.",
+      "assembly_stats": {
+        "total_lines": 324,
+        "vector_fmla_count": 0,
+        "vector_fmul_count": 5,
+        "vector_fadd_count": 20,
+        "load_count": 20,
+        "store_count": 3,
+        "branch_count": 36
+      }
+    },
+    "row_major": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: 'vectorized loop (vectorization width: 4, interleaved count: 4)'. Loop-Invariant Code Motion (LICM) hoisted 43 invariant expressions out of inner loops. Generated ARM64 assembly contains 5 floating-point arithmetic instructions (5 fused multiply-add fmla) and 14 loads.",
+      "assembly_stats": {
+        "total_lines": 240,
+        "vector_fmla_count": 5,
+        "vector_fmul_count": 0,
+        "vector_fadd_count": 0,
+        "load_count": 14,
+        "store_count": 5,
+        "branch_count": 25
+      }
+    },
+    "tiled": {
+      "summary_explanation": "Auto-vectorization SUCCEEDED: LLVM loop vectorizer emitted: 'vectorized loop (vectorization width: 4, interleaved count: 4)'. Loop-Invariant Code Motion (LICM) hoisted 45 invariant expressions out of inner loops. Generated ARM64 assembly contains 5 floating-point arithmetic instructions (5 fused multiply-add fmla) and 21 loads.",
+      "assembly_stats": {
+        "total_lines": 299,
+        "vector_fmla_count": 5,
+        "vector_fmul_count": 0,
+        "vector_fadd_count": 0,
+        "load_count": 21,
+        "store_count": 9,
+        "branch_count": 27
+      }
+    }
+  },
+  "hypotheses": [
+    {
+      "hypothesis_id": "HYP_CONV2D_INVERTED_SIMD",
+      "candidate_id": "row_major",
+      "category": "Auto-Vectorization",
+      "statement": "Inverting convolution loop order hoists kernel weights into scalar registers and streams contiguous output rows, enabling ARM64 NEON vectorization across image columns.",
+      "uncertainty": "LOW",
+      "supporting_evidence": [
+        "Contiguous row store into output[r * out_W + c] allows vector store operations.",
+        "Kernel weight w is loop-invariant over inner column iteration."
+      ],
+      "confirmation_criteria": "Candidate runtime improves by > 1.5x over naive nested convolution.",
+      "status": "CONFIRMED",
+      "evaluation_notes": "Confirmed by 5.15x measured speedup, consistent with 4-way NEON SIMD vectorization."
+    }
+  ],
+  "candidate_results": {
+    "reference": {
+      "64": {
+        "median_ms": 0.019979,
+        "min_ms": 0.019916,
+        "max_ms": 0.022208,
+        "stddev_ms": 0.000829,
+        "iqr_ms": 0.000834,
+        "gflops": 9.00946,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.02,
+          0.019958,
+          0.019917,
+          0.019958,
+          0.019958,
+          0.020292,
+          0.019916,
+          0.020792,
+          0.022208,
+          0.021917
+        ]
+      },
+      "128": {
+        "median_ms": 0.099687,
+        "min_ms": 0.088167,
+        "max_ms": 0.1095,
+        "stddev_ms": 0.00725,
+        "iqr_ms": 0.013083,
+        "gflops": 7.712139,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.088167,
+          0.096208,
+          0.108167,
+          0.103166,
+          0.106208,
+          0.094417,
+          0.092583,
+          0.093125,
+          0.1095,
+          0.10575
+        ]
+      },
+      "256": {
+        "median_ms": 0.412938,
+        "min_ms": 0.405875,
+        "max_ms": 0.421292,
+        "stddev_ms": 0.004788,
+        "iqr_ms": 0.006458,
+        "gflops": 7.689299,
+        "correctness_passed": true,
+        "max_abs_error": 0.0,
+        "max_rel_error": 0.0,
+        "raw_times_ms": [
+          0.405875,
+          0.419,
+          0.410709,
+          0.413542,
+          0.421292,
+          0.414875,
+          0.406375,
+          0.417167,
+          0.411125,
+          0.412333
+        ]
+      }
+    },
+    "row_major": {
+      "64": {
+        "median_ms": 0.007605,
+        "min_ms": 0.007,
+        "max_ms": 0.007958,
+        "stddev_ms": 0.00025,
+        "iqr_ms": 0.000249,
+        "gflops": 23.670195,
+        "correctness_passed": true,
+        "max_abs_error": 9.536743e-07,
+        "max_rel_error": 7.868488e-05,
+        "raw_times_ms": [
+          0.007708,
+          0.007667,
+          0.007334,
+          0.007459,
+          0.007459,
+          0.007667,
+          0.007958,
+          0.007,
+          0.007542,
+          0.00775
+        ]
+      },
+      "128": {
+        "median_ms": 0.020625,
+        "min_ms": 0.0205,
+        "max_ms": 0.02575,
+        "stddev_ms": 0.001741,
+        "iqr_ms": 0.000834,
+        "gflops": 37.275152,
+        "correctness_passed": true,
+        "max_abs_error": 9.536743e-07,
+        "max_rel_error": 0.001217163,
+        "raw_times_ms": [
+          0.024125,
+          0.020917,
+          0.020625,
+          0.020583,
+          0.020625,
+          0.020583,
+          0.020583,
+          0.02575,
+          0.021417,
+          0.0205
+        ]
+      },
+      "256": {
+        "median_ms": 0.08025,
+        "min_ms": 0.072166,
+        "max_ms": 0.091667,
+        "stddev_ms": 0.006468,
+        "iqr_ms": 0.011125,
+        "gflops": 39.566355,
+        "correctness_passed": true,
+        "max_abs_error": 9.536743e-07,
+        "max_rel_error": 0.05262456,
+        "raw_times_ms": [
+          0.072166,
+          0.080667,
+          0.086791,
+          0.079833,
+          0.088875,
+          0.07775,
+          0.090208,
+          0.091667,
+          0.078084,
+          0.074875
+        ]
+      }
+    },
+    "tiled": {
+      "64": {
+        "median_ms": 0.005896,
+        "min_ms": 0.00575,
+        "max_ms": 0.006875,
+        "stddev_ms": 0.00031,
+        "iqr_ms": 0.000251,
+        "gflops": 30.529172,
+        "correctness_passed": true,
+        "max_abs_error": 9.536743e-07,
+        "max_rel_error": 7.868488e-05,
+        "raw_times_ms": [
+          0.005875,
+          0.00575,
+          0.005917,
+          0.006875,
+          0.006083,
+          0.005833,
+          0.005834,
+          0.006125,
+          0.006084,
+          0.005833
+        ]
+      },
+      "128": {
+        "median_ms": 0.026687,
+        "min_ms": 0.025167,
+        "max_ms": 0.030875,
+        "stddev_ms": 0.001626,
+        "iqr_ms": 0.002166,
+        "gflops": 28.807494,
+        "correctness_passed": true,
+        "max_abs_error": 9.536743e-07,
+        "max_rel_error": 0.001217163,
+        "raw_times_ms": [
+          0.025875,
+          0.026625,
+          0.025167,
+          0.025333,
+          0.026417,
+          0.02675,
+          0.028041,
+          0.030875,
+          0.028542,
+          0.026791
+        ]
+      },
+      "256": {
+        "median_ms": 0.117541,
+        "min_ms": 0.110875,
+        "max_ms": 0.122042,
+        "stddev_ms": 0.003009,
+        "iqr_ms": 0.002167,
+        "gflops": 27.013438,
+        "correctness_passed": true,
+        "max_abs_error": 9.536743e-07,
+        "max_rel_error": 0.05262456,
+        "raw_times_ms": [
+          0.116666,
+          0.115667,
+          0.110875,
+          0.121917,
+          0.118833,
+          0.11775,
+          0.117041,
+          0.11825,
+          0.122042,
+          0.117333
+        ]
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "size": 64,
+      "candidate_id": "row_major",
+      "baseline_median_ms": 0.019979,
+      "candidate_median_ms": 0.007605,
+      "speedup": 2.627087442472058,
+      "correctness_passed": true,
+      "candidate_gflops": 23.670195,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 64,
+      "candidate_id": "tiled",
+      "baseline_median_ms": 0.019979,
+      "candidate_median_ms": 0.005896,
+      "speedup": 3.3885685210312073,
+      "correctness_passed": true,
+      "candidate_gflops": 30.529172,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 128,
+      "candidate_id": "row_major",
+      "baseline_median_ms": 0.099687,
+      "candidate_median_ms": 0.020625,
+      "speedup": 4.833309090909091,
+      "correctness_passed": true,
+      "candidate_gflops": 37.275152,
+      "p_value": 4.795330114462683e-217,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 128,
+      "candidate_id": "tiled",
+      "baseline_median_ms": 0.099687,
+      "candidate_median_ms": 0.026687,
+      "speedup": 3.7354142466369393,
+      "correctness_passed": true,
+      "candidate_gflops": 28.807494,
+      "p_value": 2.645404557222757e-189,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 256,
+      "candidate_id": "row_major",
+      "baseline_median_ms": 0.412938,
+      "candidate_median_ms": 0.08025,
+      "speedup": 5.145644859813085,
+      "correctness_passed": true,
+      "candidate_gflops": 39.566355,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    },
+    {
+      "size": 256,
+      "candidate_id": "tiled",
+      "baseline_median_ms": 0.412938,
+      "candidate_median_ms": 0.117541,
+      "speedup": 3.5131400957963606,
+      "correctness_passed": true,
+      "candidate_gflops": 27.013438,
+      "p_value": 0.0,
+      "notes": "Statistically significant difference (p < 0.0000)."
+    }
+  ],
+  "decisions": {
+    "row_major_64": {
+      "verdict": "RECOMMENDED",
+      "speedup": 2.627087442472058,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 2.63x speedup (61.9% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "tiled_64": {
+      "verdict": "RECOMMENDED",
+      "speedup": 3.3885685210312073,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 3.39x speedup (70.5% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "row_major_128": {
+      "verdict": "RECOMMENDED",
+      "speedup": 4.833309090909091,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 4.83x speedup (79.3% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "tiled_128": {
+      "verdict": "RECOMMENDED",
+      "speedup": 3.7354142466369393,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 3.74x speedup (73.2% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "row_major_256": {
+      "verdict": "RECOMMENDED",
+      "speedup": 5.145644859813085,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 5.15x speedup (80.6% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    },
+    "tiled_256": {
+      "verdict": "RECOMMENDED",
+      "speedup": 3.5131400957963606,
+      "rationale": "Candidate passed all correctness checks and delivered a statistically significant 3.51x speedup (71.5% latency reduction, p < 0.01) under controlled variability.",
+      "statistically_significant": true
+    }
+  },
+  "experiment_id": "exp_1792315362_8a6107",
+  "timestamp": "2026-10-18T09:22:42Z"
+}
