@@ -296,17 +296,91 @@ class MockAMDTransport(RemoteTransport):
             if self.simulate_benchmark_failure:
                 return 139, "", "Segmentation fault (core dumped)"
 
+            # Validate command arguments against real benchmark runner contract
+            tokens = cmd.split("axiom_benchmark_runner")[-1].strip().split()
+            valid_workloads = {"matmul", "conv2d", "memory", "ml_infer"}
+            valid_candidates = {
+                "matmul": {"reference", "interchanged", "blocked", "neon", "multithreaded", "regressed", "avx512"},
+                "conv2d": {"reference", "row_major", "tiled"},
+                "memory": {"reference", "sequential", "strided"},
+                "ml_infer": {"reference", "vectorized"},
+            }
+
+            parsed_workload = "matmul"
+            parsed_candidate = "reference"
+            parsed_size = 256
+            parsed_warmup = 3
+            parsed_runs = 15
+
+            i = 0
+            while i < len(tokens):
+                t = tokens[i]
+                if t in ("--workload", "-w"):
+                    if i + 1 >= len(tokens):
+                        return 1, "", f"Error: {t} requires an argument"
+                    parsed_workload = tokens[i + 1]
+                    i += 2
+                elif t in ("--candidate", "-c"):
+                    if i + 1 >= len(tokens):
+                        return 1, "", f"Error: {t} requires an argument"
+                    parsed_candidate = tokens[i + 1]
+                    i += 2
+                elif t in ("--size", "-s"):
+                    if i + 1 >= len(tokens):
+                        return 1, "", f"Error: {t} requires an argument"
+                    try:
+                        parsed_size = int(tokens[i + 1])
+                        if parsed_size <= 0:
+                            return 1, "", f"Error: Invalid size '{tokens[i + 1]}'"
+                    except ValueError:
+                        return 1, "", f"Error: Invalid size '{tokens[i + 1]}'"
+                    i += 2
+                elif t in ("--warmup", "--warmup-runs"):
+                    if i + 1 >= len(tokens):
+                        return 1, "", f"Error: {t} requires an argument"
+                    try:
+                        parsed_warmup = int(tokens[i + 1])
+                        if parsed_warmup < 0:
+                            return 1, "", f"Error: Invalid warmup '{tokens[i + 1]}'"
+                    except ValueError:
+                        return 1, "", f"Error: Invalid warmup '{tokens[i + 1]}'"
+                    i += 2
+                elif t in ("--runs", "--measurement-runs", "-r"):
+                    if i + 1 >= len(tokens):
+                        return 1, "", f"Error: {t} requires an argument"
+                    try:
+                        parsed_runs = int(tokens[i + 1])
+                        if parsed_runs <= 0:
+                            return 1, "", f"Error: Invalid runs '{tokens[i + 1]}'"
+                    except ValueError:
+                        return 1, "", f"Error: Invalid runs '{tokens[i + 1]}'"
+                    i += 2
+                elif t == "--format":
+                    if i + 1 >= len(tokens):
+                        return 1, "", "Error: --format requires an argument"
+                    if tokens[i + 1] != "json":
+                        return 1, "", f"Error: Unsupported format '{tokens[i + 1]}'"
+                    i += 2
+                else:
+                    return 1, "", f"Error: Unknown argument '{t}'"
+
+            if parsed_workload not in valid_workloads:
+                return 1, "", f"Error: Unknown workload '{parsed_workload}'"
+            if parsed_candidate not in valid_candidates.get(parsed_workload, set()):
+                return 1, "", f"Error: Unknown candidate '{parsed_candidate}' for workload '{parsed_workload}'"
+
             simulated_output = json.dumps({
-                "workload": "matmul",
-                "candidate": "avx512",
-                "size": 256,
-                "warmup_runs": 2,
-                "measurement_runs": 5,
+                "workload": parsed_workload,
+                "candidate": parsed_candidate,
+                "size": parsed_size,
+                "warmup_runs": parsed_warmup,
+                "measurement_runs": parsed_runs,
+                "correctness_passed": True,
                 "passed_correctness": True,
                 "raw_times_ms": [0.42, 0.41, 0.41, 0.40, 0.41],
                 "median_ms": 0.41,
                 "gflops": 81.84,
-                "notes": "SIMULATED_PROTOCOL_MOCK_AMD_ZEN4",
+                "notes": "SIMULATED_PROTOCOL_MOCK_AMD_ZEN4_NOT_NATIVE",
             })
             return 0, simulated_output, ""
 
@@ -501,18 +575,17 @@ class RemoteAmdRunner:
 
         if r_code == 0:
             try:
-                # Find JSON line or payload in r_out
+                # Find JSON block or payload in r_out
                 json_str = r_out.strip()
-                for line in r_out.splitlines():
-                    line_s = line.strip()
-                    if line_s.startswith("{") and line_s.endswith("}"):
-                        json_str = line_s
-                        break
+                start_idx = r_out.find("{")
+                end_idx = r_out.rfind("}")
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    json_str = r_out[start_idx : end_idx + 1]
                 data = json.loads(json_str)
                 raw_times = data.get("raw_times_ms", [])
                 median_ms = float(data.get("median_ms", 0.0))
                 gflops = float(data.get("gflops", 0.0))
-                passed = bool(data.get("passed_correctness", True))
+                passed = bool(data.get("correctness_passed", data.get("passed_correctness", True)))
             except Exception as e:
                 return RemoteExecutionResult(
                     run_id=run_id,

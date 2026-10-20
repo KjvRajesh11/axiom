@@ -556,8 +556,24 @@ def cmd_roofline(args):
         cpu_model=env.hardware.cpu_brand
     )
 
-    sizes = [int(s) for s in args.sizes.split(",")] if args.sizes else [128, 256, 512]
-    candidate_ids = args.candidates.split(",") if args.candidates else ["reference", "interchanged", "neon", "multithreaded"]
+    supported_roofline_workloads = {"matmul", "conv2d", "memory"}
+    if args.workload not in supported_roofline_workloads:
+        print(f"Error: Workload '{args.workload}' is not supported for Roofline analysis.")
+        print(f"Supported workloads: {sorted(supported_roofline_workloads)}")
+        return 1
+
+    if args.workload == "memory":
+        default_sizes = [64, 256, 1024]
+        default_candidates = ["sequential", "strided"]
+    elif args.workload == "conv2d":
+        default_sizes = [64, 128, 256]
+        default_candidates = ["row_major", "tiled"]
+    else:
+        default_sizes = [128, 256, 512]
+        default_candidates = ["reference", "interchanged", "neon", "multithreaded"]
+
+    sizes = [int(s) for s in args.sizes.split(",")] if args.sizes else default_sizes
+    candidate_ids = args.candidates.split(",") if args.candidates else default_candidates
 
     print(f"Workload:     {args.workload}")
     print(f"Candidates:   {candidate_ids}")

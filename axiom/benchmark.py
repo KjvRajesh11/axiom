@@ -271,19 +271,22 @@ class BenchmarkEngine:
             targets = [baseline_id] + targets
 
         for size in target_sizes:
-            # Run baseline
-            base_res = self.sandbox.run_candidate(
-                workload=workload_id,
-                candidate=baseline_id,
-                size=size,
-                warmup_runs=warmup_runs,
-                measurement_runs=measurement_runs,
-                timeout_seconds=wl.timeout_seconds
-            )
-            results_by_candidate.setdefault(baseline_id, {})[size] = base_res
+            # 1. Execute baseline and all candidates for this size
+            for cand_id in targets:
+                res = self.sandbox.run_candidate(
+                    workload=workload_id,
+                    candidate=cand_id,
+                    size=size,
+                    warmup_runs=warmup_runs,
+                    measurement_runs=measurement_runs,
+                    timeout_seconds=wl.timeout_seconds
+                )
+                results_by_candidate.setdefault(cand_id, {})[size] = res
+
+            base_res = results_by_candidate[baseline_id][size]
             base_stats = calculate_comprehensive_stats(base_res.raw_times_ms)
 
-            # Find best single-threaded candidate for this size
+            # 2. Identify the true best single-threaded candidate for this size
             best_single_id = None
             best_single_ms = float("inf")
             for cid in targets:
@@ -294,18 +297,11 @@ class BenchmarkEngine:
                     best_single_ms = c_res.median_ms
                     best_single_id = cid
 
+            # 3. Generate candidate comparisons against baseline and best 1-core candidate
             for cand_id in targets:
                 if cand_id == baseline_id:
                     continue
-                cand_res = self.sandbox.run_candidate(
-                    workload=workload_id,
-                    candidate=cand_id,
-                    size=size,
-                    warmup_runs=warmup_runs,
-                    measurement_runs=measurement_runs,
-                    timeout_seconds=wl.timeout_seconds
-                )
-                results_by_candidate.setdefault(cand_id, {})[size] = cand_res
+                cand_res = results_by_candidate[cand_id][size]
                 cand_stats = calculate_comprehensive_stats(cand_res.raw_times_ms)
 
                 is_noisy = (base_stats.cv > 0.15) or (cand_stats.cv > 0.15)

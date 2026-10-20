@@ -133,3 +133,62 @@ def test_roofline_calibration():
     # Observed single-core compute should be positive and realistic
     for k, v in calibrated.items():
         assert v > 0.0
+
+
+def test_arithmetic_intensity_memory_sweep():
+    # Sequential memory sweep: 64 KB = 65,536 bytes
+    flops, bytes_cnt, ai = ArithmeticIntensityCalculator.calculate_memory_sweep(65536, "sequential")
+    assert flops == 65536 / 4.0  # 16,384 additions
+    assert bytes_cnt == 65536.0
+    assert pytest.approx(ai, rel=1e-5) == 0.25
+
+    # Strided memory sweep (128-byte cache-line traffic model)
+    s_flops, s_bytes, s_ai = ArithmeticIntensityCalculator.calculate_memory_sweep(65536, "strided")
+    assert s_flops == 16384.0
+    assert s_bytes == 16384.0 * 128.0
+    assert pytest.approx(s_ai, rel=1e-5) == 1.0 / 128.0
+
+    # Zero or invalid sizes
+    z_flops, z_bytes, z_ai = ArithmeticIntensityCalculator.calculate_memory_sweep(0, "sequential")
+    assert (z_flops, z_bytes, z_ai) == (0.0, 0.0, 0.0)
+
+    neg_flops, neg_bytes, neg_ai = ArithmeticIntensityCalculator.calculate_memory_sweep(-1024, "sequential")
+    assert (neg_flops, neg_bytes, neg_ai) == (0.0, 0.0, 0.0)
+
+
+def test_roofline_memory_workload_analysis():
+    analyzer = RooflineAnalyzer(architecture="arm64", cpu_model="Apple M4")
+
+    # Sequential traversal 1024 KB
+    p_seq = analyzer.analyze_candidate(
+        workload_id="memory",
+        candidate_id="sequential",
+        size=1024,
+        median_ms=2.5,
+        stddev_ms=0.05,
+        measured_gflops=8.2,  # represents GB/s
+    )
+    assert p_seq.regime == "memory_bound"
+    assert pytest.approx(p_seq.arithmetic_intensity, rel=1e-4) == 0.25
+    assert p_seq.working_set_bytes == 1024 * 1024
+    assert p_seq.cache_tier == "L2_L3_resident"
+    assert "effective bandwidth" in p_seq.notes
+    assert "GB/s" in p_seq.notes
+
+    # Large memory sweep (32 MB) spilling into DRAM
+    p_dram = analyzer.analyze_candidate(
+        workload_id="memory",
+        candidate_id="sequential",
+        size=32768,
+        median_ms=80.0,
+        stddev_ms=1.5,
+        measured_gflops=6.5,
+    )
+    assert p_dram.cache_tier == "DRAM_resident"
+    assert p_dram.bandwidth_tier == "DRAM_bandwidth"
+
+
+def test_roofline_unsupported_workload_rejection():
+    analyzer = RooflineAnalyzer(architecture="arm64", cpu_model="Apple M4")
+    with pytest.raises(ValueError, match="Unsupported workload 'unsupported_test_workload'"):
+        analyzer.analyze_candidate("unsupported_test_workload", "reference", 64, 1.0, 0.1, 5.0)

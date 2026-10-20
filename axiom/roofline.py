@@ -120,6 +120,38 @@ class ArithmeticIntensityCalculator:
         return total_flops, total_bytes, ai
 
     @staticmethod
+    def calculate_memory_sweep(buffer_bytes: int, candidate_id: str = "sequential") -> Tuple[float, float, float]:
+        """Calculates formal operational intensity (FLOP/byte) for memory traversal microbenchmarks.
+
+        In memory traversal (reading an array of float32 elements):
+        - FLOPs: 1 addition per float32 element (4 bytes).
+          total_flops = float(buffer_bytes) / 4.0.
+        - Compulsory memory bytes: buffer_bytes.
+        - Sequential traversal:
+          Spatial locality: full 128-byte cache lines utilized.
+          Compulsory data bytes = buffer_bytes.
+          Arithmetic Intensity = (buffer_bytes / 4) / buffer_bytes = 0.25 FLOP/byte.
+        - Strided traversal:
+          Non-unit stride (128 bytes, 1 cache line per element).
+          Under compulsory data access: total_bytes = buffer_bytes, AI = 0.25 FLOP/byte.
+          Under uncoalesced bus traffic (128 bytes fetched per 4-byte element):
+          effective_bus_bytes = (buffer_bytes / 4) * 128 = 32 * buffer_bytes.
+          AI_traffic = (buffer_bytes / 4) / (32 * buffer_bytes) = 1 / 128 = 0.0078125 FLOP/byte.
+        """
+        if buffer_bytes <= 0:
+            return 0.0, 0.0, 0.0
+
+        total_flops = float(buffer_bytes) / 4.0
+        if candidate_id == "strided":
+            total_bytes = (float(buffer_bytes) / 4.0) * 128.0
+            ai = total_flops / total_bytes if total_bytes > 0 else 0.0
+        else:
+            total_bytes = float(buffer_bytes)
+            ai = total_flops / total_bytes if total_bytes > 0 else 0.0
+
+        return total_flops, total_bytes, ai
+
+    @staticmethod
     def calculate_working_set_bytes(workload_id: str, size: int) -> int:
         if size <= 0:
             return 0
@@ -128,6 +160,8 @@ class ArithmeticIntensityCalculator:
         elif workload_id == "conv2d":
             out_dim = max(0, size - 5 + 1)
             return int((size * size + 25 + out_dim * out_dim) * 4)
+        elif workload_id == "memory":
+            return int(size * 1024)
         else:
             return int(size * 1024)
 
@@ -286,8 +320,12 @@ class RooflineAnalyzer:
             _, _, ai = ArithmeticIntensityCalculator.calculate_matmul(size, candidate_id)
         elif workload_id == "conv2d":
             _, _, ai = ArithmeticIntensityCalculator.calculate_conv2d(size, size, 5, candidate_id)
+        elif workload_id == "memory":
+            _, _, ai = ArithmeticIntensityCalculator.calculate_memory_sweep(size * 1024, candidate_id)
         else:
-            _, _, ai = ArithmeticIntensityCalculator.calculate_memory_sweep(size * 1024)
+            raise ValueError(
+                f"Unsupported workload '{workload_id}' for Roofline analysis. Supported workloads: matmul, conv2d, memory"
+            )
 
         ws_bytes = ArithmeticIntensityCalculator.calculate_working_set_bytes(workload_id, size)
         cache_tier, bw_tier = ArithmeticIntensityCalculator.classify_working_set(ws_bytes, self.architecture)
@@ -315,7 +353,12 @@ class RooflineAnalyzer:
         efficiency = (measured_gflops / roofline_limit) * 100.0 if roofline_limit > 0 else 0.0
 
         notes = ""
-        if median_ms <= 0:
+        if workload_id == "memory":
+            notes = (
+                f"Memory microbenchmark: measured throughput represents effective bandwidth "
+                f"({measured_gflops:.2f} GB/s). Operating intensity = {ai:.4f} FLOP/byte."
+            )
+        elif median_ms <= 0:
             notes = "Invalid measurement duration <= 0 ms."
 
         return RooflinePoint(

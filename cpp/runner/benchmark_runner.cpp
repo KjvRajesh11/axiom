@@ -38,11 +38,16 @@ static void calculate_stats(
     double sum = std::accumulate(sorted.begin(), sorted.end(), 0.0);
     mean_val = sum / n;
 
-    double sq_sum = 0.0;
-    for (double t : sorted) {
-        sq_sum += (t - mean_val) * (t - mean_val);
+    // Sample standard deviation (Bessel's correction N - 1)
+    if (n > 1) {
+        double sq_sum = 0.0;
+        for (double t : sorted) {
+            sq_sum += (t - mean_val) * (t - mean_val);
+        }
+        stddev_val = std::sqrt(sq_sum / (n - 1));
+    } else {
+        stddev_val = 0.0;
     }
-    stddev_val = std::sqrt(sq_sum / n);
 
     // IQR = Q3 - Q1
     double q1 = sorted[n / 4];
@@ -50,14 +55,211 @@ static void calculate_stats(
     iqr_val = q3 - q1;
 }
 
+static void print_usage(const char* prog) {
+    std::cout << "Axiom High-Performance Benchmark Runner\n"
+              << "Usage:\n"
+              << "  Positional: " << prog << " [workload] [candidate] [size] [warmup] [runs]\n"
+              << "  Named:      " << prog << " --workload <w> --candidate <c> --size <s> --warmup <w> --runs <r> [--format json]\n"
+              << "\nOptions:\n"
+              << "  -w, --workload <name>    Workload identifier (matmul, conv2d, memory, ml_infer)\n"
+              << "  -c, --candidate <name>   Candidate identifier\n"
+              << "  -s, --size <int>         Problem dimension / size (> 0)\n"
+              << "      --warmup <int>       Number of untimed warmup iterations (>= 0)\n"
+              << "  -r, --runs <int>         Number of timed measurement iterations (> 0)\n"
+              << "      --format <fmt>       Output format (only 'json' is supported)\n"
+              << "  -h, --help               Display this help message and exit\n";
+}
+
 int main(int argc, char** argv) {
-    // Arguments: <workload> <candidate> <size> <warmup> <runs>
-    // Example: axiom_benchmark_runner matmul neon 256 3 15
-    std::string workload = (argc > 1) ? argv[1] : "matmul";
-    std::string candidate = (argc > 2) ? argv[2] : "reference";
-    int size = (argc > 3) ? std::stoi(argv[3]) : 256;
-    int warmup = (argc > 4) ? std::stoi(argv[4]) : 3;
-    int runs = (argc > 5) ? std::stoi(argv[5]) : 15;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 0;
+        }
+    }
+
+    std::string workload = "matmul";
+    std::string candidate = "reference";
+    int size = 256;
+    int warmup = 3;
+    int runs = 15;
+    std::string format = "json";
+
+    if (argc > 1) {
+        bool is_named = (argv[1][0] == '-');
+        if (is_named) {
+            for (int i = 1; i < argc; ++i) {
+                std::string arg = argv[i];
+                if (arg == "--workload" || arg == "-w") {
+                    if (i + 1 >= argc) {
+                        std::cerr << "Error: " << arg << " requires an argument\n";
+                        return 1;
+                    }
+                    workload = argv[++i];
+                } else if (arg == "--candidate" || arg == "-c") {
+                    if (i + 1 >= argc) {
+                        std::cerr << "Error: " << arg << " requires an argument\n";
+                        return 1;
+                    }
+                    candidate = argv[++i];
+                } else if (arg == "--size" || arg == "-s") {
+                    if (i + 1 >= argc) {
+                        std::cerr << "Error: " << arg << " requires an argument\n";
+                        return 1;
+                    }
+                    try {
+                        size_t pos = 0;
+                        std::string val = argv[++i];
+                        int s = std::stoi(val, &pos);
+                        if (pos != val.size() || s <= 0) {
+                            std::cerr << "Error: Invalid size '" << val << "' (must be a positive integer)\n";
+                            return 1;
+                        }
+                        size = s;
+                    } catch (...) {
+                        std::cerr << "Error: Invalid size '" << argv[i] << "' (must be an integer)\n";
+                        return 1;
+                    }
+                } else if (arg == "--warmup" || arg == "--warmup-runs") {
+                    if (i + 1 >= argc) {
+                        std::cerr << "Error: " << arg << " requires an argument\n";
+                        return 1;
+                    }
+                    try {
+                        size_t pos = 0;
+                        std::string val = argv[++i];
+                        int w = std::stoi(val, &pos);
+                        if (pos != val.size() || w < 0) {
+                            std::cerr << "Error: Invalid warmup '" << val << "' (must be a non-negative integer)\n";
+                            return 1;
+                        }
+                        warmup = w;
+                    } catch (...) {
+                        std::cerr << "Error: Invalid warmup '" << argv[i] << "' (must be an integer)\n";
+                        return 1;
+                    }
+                } else if (arg == "--runs" || arg == "--measurement-runs" || arg == "-r") {
+                    if (i + 1 >= argc) {
+                        std::cerr << "Error: " << arg << " requires an argument\n";
+                        return 1;
+                    }
+                    try {
+                        size_t pos = 0;
+                        std::string val = argv[++i];
+                        int r = std::stoi(val, &pos);
+                        if (pos != val.size() || r <= 0) {
+                            std::cerr << "Error: Invalid runs '" << val << "' (must be a positive integer)\n";
+                            return 1;
+                        }
+                        runs = r;
+                    } catch (...) {
+                        std::cerr << "Error: Invalid runs '" << argv[i] << "' (must be an integer)\n";
+                        return 1;
+                    }
+                } else if (arg == "--format") {
+                    if (i + 1 >= argc) {
+                        std::cerr << "Error: --format requires an argument\n";
+                        return 1;
+                    }
+                    format = argv[++i];
+                    if (format != "json") {
+                        std::cerr << "Error: Unsupported format '" << format << "' (only 'json' is supported)\n";
+                        return 1;
+                    }
+                } else {
+                    std::cerr << "Error: Unknown argument '" << arg << "'\n";
+                    print_usage(argv[0]);
+                    return 1;
+                }
+            }
+        } else {
+            // Positional parsing: <workload> <candidate> <size> <warmup> <runs>
+            if (argc > 6) {
+                std::cerr << "Error: Too many positional arguments provided (expected at most 5: workload candidate size warmup runs)\n";
+                return 1;
+            }
+            workload = argv[1];
+            if (argc > 2) candidate = argv[2];
+            if (argc > 3) {
+                try {
+                    size_t pos = 0;
+                    std::string val = argv[3];
+                    int s = std::stoi(val, &pos);
+                    if (pos != val.size() || s <= 0) {
+                        std::cerr << "Error: Invalid size '" << val << "' (must be a positive integer)\n";
+                        return 1;
+                    }
+                    size = s;
+                } catch (...) {
+                    std::cerr << "Error: Invalid size '" << argv[3] << "' (must be an integer)\n";
+                    return 1;
+                }
+            }
+            if (argc > 4) {
+                try {
+                    size_t pos = 0;
+                    std::string val = argv[4];
+                    int w = std::stoi(val, &pos);
+                    if (pos != val.size() || w < 0) {
+                        std::cerr << "Error: Invalid warmup '" << val << "' (must be a non-negative integer)\n";
+                        return 1;
+                    }
+                    warmup = w;
+                } catch (...) {
+                    std::cerr << "Error: Invalid warmup '" << argv[4] << "' (must be an integer)\n";
+                    return 1;
+                }
+            }
+            if (argc > 5) {
+                try {
+                    size_t pos = 0;
+                    std::string val = argv[5];
+                    int r = std::stoi(val, &pos);
+                    if (pos != val.size() || r <= 0) {
+                        std::cerr << "Error: Invalid runs '" << val << "' (must be a positive integer)\n";
+                        return 1;
+                    }
+                    runs = r;
+                } catch (...) {
+                    std::cerr << "Error: Invalid runs '" << argv[5] << "' (must be an integer)\n";
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // Workload and Candidate validation
+    if (workload == "matmul") {
+        const std::vector<std::string> valid_cands = {
+            "reference", "interchanged", "blocked", "neon", "multithreaded", "regressed", "avx512"
+        };
+        if (std::find(valid_cands.begin(), valid_cands.end(), candidate) == valid_cands.end()) {
+            std::cerr << "Error: Unknown candidate '" << candidate << "' for workload 'matmul'. Valid candidates: reference, interchanged, blocked, neon, multithreaded, regressed, avx512\n";
+            return 1;
+        }
+    } else if (workload == "conv2d") {
+        const std::vector<std::string> valid_cands = {"reference", "row_major", "tiled"};
+        if (std::find(valid_cands.begin(), valid_cands.end(), candidate) == valid_cands.end()) {
+            std::cerr << "Error: Unknown candidate '" << candidate << "' for workload 'conv2d'. Valid candidates: reference, row_major, tiled\n";
+            return 1;
+        }
+    } else if (workload == "memory") {
+        const std::vector<std::string> valid_cands = {"reference", "sequential", "strided"};
+        if (std::find(valid_cands.begin(), valid_cands.end(), candidate) == valid_cands.end()) {
+            std::cerr << "Error: Unknown candidate '" << candidate << "' for workload 'memory'. Valid candidates: reference, sequential, strided\n";
+            return 1;
+        }
+    } else if (workload == "ml_infer") {
+        const std::vector<std::string> valid_cands = {"reference", "vectorized"};
+        if (std::find(valid_cands.begin(), valid_cands.end(), candidate) == valid_cands.end()) {
+            std::cerr << "Error: Unknown candidate '" << candidate << "' for workload 'ml_infer'. Valid candidates: reference, vectorized\n";
+            return 1;
+        }
+    } else {
+        std::cerr << "Error: Unknown workload '" << workload << "'. Supported workloads: matmul, conv2d, memory, ml_infer\n";
+        return 1;
+    }
 
     std::vector<double> run_times_ms;
     run_times_ms.reserve(runs);
@@ -211,7 +413,7 @@ int main(int argc, char** argv) {
 
         for (int w = 0; w < warmup; ++w) {
             float s = 0.0f;
-            if (candidate == "sequential") {
+            if (candidate == "reference" || candidate == "sequential") {
                 s = memory_traverse_sequential(buffer.data(), num_elements, iters);
             } else if (candidate == "strided") {
                 s = memory_traverse_strided(buffer.data(), num_elements, stride_elements, iters);
@@ -225,7 +427,7 @@ int main(int argc, char** argv) {
         for (int r = 0; r < runs; ++r) {
             auto t0 = BenchmarkClock::now();
             float s = 0.0f;
-            if (candidate == "sequential") {
+            if (candidate == "reference" || candidate == "sequential") {
                 s = memory_traverse_sequential(buffer.data(), num_elements, iters);
             } else if (candidate == "strided") {
                 s = memory_traverse_strided(buffer.data(), num_elements, stride_elements, iters);
@@ -358,6 +560,7 @@ int main(int argc, char** argv) {
     std::cout << "  \"warmup_runs\": " << warmup << ",\n";
     std::cout << "  \"measurement_runs\": " << runs << ",\n";
     std::cout << "  \"correctness_passed\": " << (correctness_passed ? "true" : "false") << ",\n";
+    std::cout << "  \"passed_correctness\": " << (correctness_passed ? "true" : "false") << ",\n";
     std::cout << "  \"max_abs_error\": " << std::scientific << std::setprecision(6) << max_abs_err << ",\n";
     std::cout << "  \"max_rel_error\": " << std::scientific << std::setprecision(6) << max_rel_err << ",\n";
     std::cout << std::fixed << std::setprecision(6);

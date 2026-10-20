@@ -89,3 +89,62 @@ def test_tukey_outlier_detection_preserves_samples():
     # Verify no samples were deleted
     assert len(times) == 8
     assert stats.max_val == 100.0
+
+
+def test_sample_stddev_known_values():
+    """Validates sample variance denominator N-1 on known mathematical dataset."""
+    import math
+    # Known dataset: [2, 4, 4, 4, 5, 5, 7, 9], N = 8, mean = 5.0
+    # sq_diffs = (2-5)^2 + 3*(4-5)^2 + 2*(5-5)^2 + (7-5)^2 + (9-5)^2 = 9 + 3 + 0 + 4 + 16 = 32
+    # Sample variance = 32 / (8 - 1) = 32 / 7
+    # Sample stddev = sqrt(32 / 7) ~= 2.138089935
+    data = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    stats = calculate_comprehensive_stats(data)
+
+    expected_mean = 5.0
+    expected_sample_stddev = math.sqrt(32.0 / 7.0)
+
+    assert abs(stats.mean_val - expected_mean) < 1e-6
+    assert abs(stats.stddev_val - expected_sample_stddev) < 1e-6
+
+    # 1 sample: stddev must be exactly 0.0
+    single = calculate_comprehensive_stats([10.0])
+    assert single.stddev_val == 0.0
+
+    # 2 samples: [10.0, 12.0], mean = 11.0, diffs = [-1, 1], sq_diffs = 2, var = 2 / 1 = 2, std = sqrt(2)
+    two_samples = calculate_comprehensive_stats([10.0, 12.0])
+    assert abs(two_samples.stddev_val - math.sqrt(2.0)) < 1e-6
+
+
+def test_cpp_and_python_statistical_agreement():
+    """Validates that C++ benchmark runner and Python benchmark engine produce identical sample statistics."""
+    import json
+    import subprocess
+    from pathlib import Path
+
+    runner_bin = Path("build/axiom_benchmark_runner")
+    assert runner_bin.exists()
+
+    cmd = [
+        str(runner_bin),
+        "--workload", "matmul",
+        "--candidate", "reference",
+        "--size", "64",
+        "--warmup", "1",
+        "--runs", "7",
+        "--format", "json",
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    assert res.returncode == 0
+
+    cpp_data = json.loads(res.stdout.strip())
+    raw_times = cpp_data["raw_times_ms"]
+    assert len(raw_times) == 7
+
+    py_stats = calculate_comprehensive_stats(raw_times)
+
+    # Assert exact agreement on mean, median, sample stddev (N-1), and IQR
+    assert abs(cpp_data["mean_ms"] - py_stats.mean_val) < 1e-4
+    assert abs(cpp_data["median_ms"] - py_stats.median_val) < 1e-4
+    assert abs(cpp_data["stddev_ms"] - py_stats.stddev_val) < 1e-4
+    assert abs(cpp_data["iqr_ms"] - py_stats.iqr_val) < 1e-4
